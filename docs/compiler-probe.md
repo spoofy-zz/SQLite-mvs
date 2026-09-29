@@ -42,3 +42,14 @@ The project now works around both constraints without editing `sqlite3.c`:
 With these adaptations, `as370` returns RC 0 and emits a roughly 1.2 MiB object
 deck. The adaptations should eventually be proposed upstream; they remain
 explicit and reproducible here so development can continue immediately.
+
+## Link and MVS execution
+
+The pinned current `cc370` and `libc370` submodules supply the 64-bit runtime
+helpers used by SQLite. `make probe-link` links the core, the initial MVS OS
+bootstrap, and `tests/core_link.c` into `SQLTTEST`.
+
+The first deployment installed `SQLTTEST` in `IBMUSER.SQLITE.LOAD`. Turnkey5
+job `JOB01174` completed with CC 0000 and emitted `SQLite 3.8.11.1 (3008011)`.
+This proves compile, assemble, link, load and execution. It does not yet prove
+database I/O; `sqlite3_mvs.c` intentionally registers no VFS at this stage.

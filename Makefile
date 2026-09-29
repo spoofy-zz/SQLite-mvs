@@ -5,9 +5,16 @@ endif
 SQLITE_VERSION := 3.8.11.1
 SQLITE_SRC := vendor/sqlite/sqlite3.c
 BUILDDIR := build
+SDK_ROOT := $(abspath $(BUILDDIR)/sdk)
+ifneq (,$(wildcard $(SDK_ROOT)/bin/cc370))
+CC370 ?= $(SDK_ROOT)/bin/cc370
+AS370 ?= $(SDK_ROOT)/bin/as370
+LD370 ?= $(SDK_ROOT)/bin/ld370
+else
 CC370 ?= cc370
 AS370 ?= as370
 LD370 ?= ld370
+endif
 AS370_LARGE ?= $(BUILDDIR)/tools/as370
 CC370_SOURCE ?= toolchain/cc370
 
@@ -22,7 +29,11 @@ SQLITE_MVS_CPPFLAGS := \
 	-DSQLITE_MAX_MMAP_SIZE=0 \
 	-DSQLITE_OMIT_AUTOINIT=1
 
-.PHONY: probe probe-c probe-asm probe-link names as370-large clean mbt-build
+.PHONY: probe probe-c probe-asm probe-link names sdk as370-large clean mbt-build
+
+sdk:
+	$(MAKE) -C toolchain/cc370 PREFIX=$(SDK_ROOT) install
+	PATH=$(SDK_ROOT)/bin:$(PATH) $(MAKE) -C toolchain/libc370 install
 
 # Phase 1 deliberately stops before sqlite3_mvs.c: prove what the toolchain
 # can consume and preserve complete diagnostics for comparison.

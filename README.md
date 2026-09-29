@@ -17,9 +17,24 @@ The pinned baseline is SQLite 3.8.11.1. Its amalgamation is kept unmodified in
 ## Compiler probe
 
 ```sh
+git submodule update --init --recursive
+make sdk
 make probe-c
 make probe-asm
 make probe-link
+```
+
+`make probe` runs all three gates. The current baseline produces a 1.2 MiB
+object deck and an 857 KiB `SQLTTEST` load module.
+
+## Current status
+
+The full SQLite 3.8.11.1 core compiles, assembles and links with the pinned
+cc370/libc370 toolchain. `SQLTTEST` was deployed to `IBMUSER.SQLITE.LOAD` and
+executed on Turnkey5/MVS 3.8j; the first run returned CC 0000 and printed:
+
+```text
+SQLite 3.8.11.1 (3008011)
 ```
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.

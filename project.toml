@@ -21,10 +21,14 @@ cflags = [
 ]
 
 [[module]]
-name = "SQLITE3"
+name = "SQLTTEST"
 entry = "@@CRT0"
 startup = "crt1"
-sources = ["vendor/sqlite/sqlite3.c", "src/sqlite3_mvs.c"]
+sources = [
+  "vendor/sqlite/sqlite3.c",
+  "src/sqlite3_mvs.c",
+  "tests/core_link.c",
+]
 
 [deploy]
 target = "IBMUSER.SQLITE.LOAD"
