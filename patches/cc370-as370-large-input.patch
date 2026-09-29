@@ -1,0 +1,16 @@
+diff --git a/as370/src/as370.c b/as370/src/as370.c
+index 0000000..0000000 100644
+--- a/as370/src/as370.c
++++ b/as370/src/as370.c
+@@ -42,11 +42,11 @@ static size_t bcat(char *d, size_t dsz, size_t at, const char *s) {
+  * modules, not the 24-bit target. Largest rexx370 CSECT is well under these. */
+ #define MAXSYM 65536
+ #define MAXLIT 65536
+-#define MAXREL 131072
++#define MAXREL 524288
+ /* Sizes the expanded-statement arrays of the macro preprocessor below, and the
+  * flagged-statement bitmaps right after this -- which the recorders start
+  * marking at note_overlong, long before the preprocessor is declared. */
+-#define MAXLINES 131072
++#define MAXLINES 524288
+

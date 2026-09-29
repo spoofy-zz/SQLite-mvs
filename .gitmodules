@@ -1,0 +1,9 @@
+[submodule "mbt"]
+	path = mbt
+	url = https://github.com/mvslovers/mbt.git
+[submodule "toolchain/cc370"]
+	path = toolchain/cc370
+	url = https://github.com/mvslovers/cc370.git
+[submodule "toolchain/libc370"]
+	path = toolchain/libc370
+	url = https://github.com/mvslovers/libc370.git

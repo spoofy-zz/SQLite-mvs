@@ -1,0 +1,5 @@
+build/
+.mbt/
+.env
+dist/
+*.o
