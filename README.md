@@ -37,6 +37,25 @@ executed on Turnkey5/MVS 3.8j; the first run returned CC 0000 and printed:
 SQLite 3.8.11.1 (3008011)
 ```
 
+The first VFS increment maps each 4096-byte SQLite page to the matching VSAM
+RRDS relative record number (`page 1 -> RRN 1`). `jcl/define-rrds.jcl` creates
+the experimental `IBMUSER.SQLITE.RRDS` cluster. Jobs using the VFS allocate it
+as DD `SQLDB`. The MVS smoke test now completes CREATE, INSERT, and SELECT with
+CC 0000:
+
+```text
+create rc=0
+insert rc=0
+id=1 value=MVS RRDS
+select rc=0
+```
+
+Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
+`SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection. This
+phase deliberately uses `journal_mode=OFF`, process-local locking and
+logical-only truncate; crash recovery, physical truncate, and ENQ/DEQ come
+next.
+
 See `docs/compiler-probe.md` for the exact configuration and current findings.
 
 ## MBT
