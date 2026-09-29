@@ -151,8 +151,24 @@ static int mvsWrite(sqlite3_file *base, const void *in, int amount,
 
 static int mvsTruncate(sqlite3_file *base, sqlite3_int64 size)
 {
-    /* Physical ERASE of trailing RRNs comes with the transaction layer. */
-    ((MvsFile *)base)->size = size;
+    MvsFile *file = (MvsFile *)base;
+    unsigned oldPages;
+    unsigned newPages;
+    unsigned char page[MVS_PAGE_SIZE];
+    unsigned rrn;
+    if (size < 0 || (size % MVS_PAGE_SIZE) != 0)
+        return SQLITE_IOERR_TRUNCATE;
+    oldPages = (unsigned)(file->size / MVS_PAGE_SIZE);
+    newPages = (unsigned)(size / MVS_PAGE_SIZE);
+    for (rrn = oldPages; rrn > newPages; rrn--) {
+        if (mvsReadPage(file, rrn, page)) {
+            if (__vsdel(file->vs, page, MVS_PAGE_SIZE) != 0) {
+                __vsclr(file->vs);
+                return SQLITE_IOERR_TRUNCATE;
+            }
+        }
+    }
+    file->size = size;
     return SQLITE_OK;
 }
 

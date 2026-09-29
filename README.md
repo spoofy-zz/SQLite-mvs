@@ -50,11 +50,15 @@ id=1 value=MVS RRDS
 select rc=0
 ```
 
+The smoke path also enables full auto-vacuum, grows the database with a
+12,000-byte value, deletes it, and verifies the reduced page count. The VFS
+implements SQLite `xTruncate` by issuing positioned VSAM `ERASE` operations
+for RRNs above the new logical end.
+
 Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
 `SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection. This
-phase deliberately uses `journal_mode=OFF`, process-local locking and
-logical-only truncate; crash recovery, physical truncate, and ENQ/DEQ come
-next.
+phase deliberately uses `journal_mode=OFF` and process-local locking; crash
+recovery and ENQ/DEQ come next.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
 

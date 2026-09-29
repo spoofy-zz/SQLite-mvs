@@ -42,10 +42,19 @@ int main(void)
     printf("open rc=%d db=%p\n", rc, db);
     if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=OFF;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=OFF;", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "auto-vacuum", "PRAGMA auto_vacuum=FULL;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "create",
         "CREATE TABLE IF NOT EXISTS smoke(id INTEGER PRIMARY KEY,value TEXT);", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "grow",
+        "INSERT INTO smoke(value) VALUES(zeroblob(12000));", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "grown-pages",
+        "PRAGMA page_count;", printRow);
+    if (rc == SQLITE_OK) rc = runSql(db, "shrink",
+        "DELETE FROM smoke WHERE typeof(value)='blob';", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "insert",
         "INSERT INTO smoke(value) VALUES('MVS RRDS');", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "shrunk-pages",
+        "PRAGMA page_count;", printRow);
     if (rc == SQLITE_OK) rc = runSql(db, "select",
         "SELECT id,value FROM smoke ORDER BY id DESC LIMIT 1;", printRow);
     if (rc != SQLITE_OK)
