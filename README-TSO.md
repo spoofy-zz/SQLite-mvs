@@ -50,17 +50,27 @@ Command             Description
 .databases          List attached databases
 .foreignkeys [on|off]  Show or change foreign-key enforcement
 .stats              Show page and journal statistics
+.integrity_check    Run a complete database integrity check
+.foreign_key_check  Report foreign-key violations
+.analyze            Refresh query-planner statistics
+.vacuum             Explain the current RRDS/VACUUM limitation
 .lastid             Show the last inserted rowid
 .headers on|off     Show or hide column headers
-.mode column|list|line  Select output format
+.mode column|list|line|csv  Select output format
 .separator TEXT     Set the list-mode separator
 .width N ...        Set column widths (1-80)
 .nullvalue TEXT     Set NULL display text
 .echo on|off        Echo SQL before execution
 .changes on|off     Show current and total change counts
+.timer on|off       Show CPU time used by each SQL statement
+.trace on|off       Show statements executed by SQLite
 .timeout MS         Wait for database locks
 .show               Show shell settings
 .reset              Restore default shell settings
+.read DDNAME        Execute SQL from an allocated sequential DD
+.output DDNAME      Redirect output (`.output terminal` restores TSO)
+.once DDNAME        Redirect only the next SQL result
+.dump [table]       Export the database or one table as SQL
 .clear              Clear screen and move cursor home
 .version            Show SQLite version
 .quit / .exit       Return to TSO READY
@@ -70,7 +80,8 @@ Command             Description
 configured widths and the final column is not truncated. `list` prints full
 values separated with ` | ` or the value selected by `.separator`. `line`
 prints one `column = value` pair per line and is useful for wide rows on a
-24x80 terminal.
+24x80 terminal. `csv` applies standard double-quote escaping to commas and
+quotes and is intended for redirected output.
 
 Example configuration:
 
@@ -91,6 +102,8 @@ Useful inspection commands:
 .tableinfo people
 .foreignkeys
 .stats
+.integrity_check
+.foreign_key_check
 .mode line
 SELECT * FROM people WHERE id=1;
 .reset
@@ -101,6 +114,74 @@ SELECT * FROM people WHERE id=1;
 count, journal mode, and synchronous level. `.lastid` reports the connection's
 most recent rowid, while `.changes on` adds both current and cumulative change
 counts after successful SQL statements.
+
+## SQL scripts and redirected output
+
+`.read`, `.output`, and `.once` use DD names, not Unix paths. Allocate a
+sequential dataset before starting `SQLITE` or `TESTDB`. For example:
+
+```text
+ALLOC FI(SQLIN) DA('RVEZ001.SQLITE.SQLIN') SHR
+ALLOC FI(SQLOUT) DA('RVEZ001.SQLITE.SQLOUT') OLD
+TESTDB
+```
+
+Inside the shell:
+
+```text
+.read SQLIN
+.mode csv
+.once SQLOUT
+SELECT * FROM people ORDER BY id;
+.output SQLOUT
+.schema
+.dump people
+.output terminal
+```
+
+Input may contain multi-line SQL, blank lines, `--` comment lines, and shell
+dot-commands. Statements still need semicolons. Output DDs are opened for
+write, so their previous contents are replaced. `.once` automatically returns
+output to the terminal after one SQL execution. Prompts and redirection status
+remain visible on the terminal.
+
+`.dump` emits `PRAGMA foreign_keys=OFF`, a transaction, table DDL, typed
+`INSERT` statements, and then indexes, triggers, and views. Use it with
+`.once` or `.output` for a restorable sequential SQL dataset:
+
+```text
+.once SQLOUT
+.dump
+```
+
+The current shell has a 2048-byte logical output-line limit. A dump row with
+a very large TEXT or BLOB value can therefore be truncated; use `.dump` for
+ordinary application rows and schema migration, not yet as the physical RRDS
+backup mechanism. A page-preserving backup will use the planned second
+`SQLBAK`/`SQLBJR` DD pair.
+
+## Administration commands
+
+Run these while no long transaction is open:
+
+```text
+.integrity_check
+.foreign_key_check
+.analyze
+.stats
+```
+
+An intact database returns one `ok` row from `.integrity_check`.
+`.foreign_key_check` returns no rows when there are no violations. `.analyze`
+updates SQLite planner statistics through the normal journaled write path.
+
+Full `VACUUM` is deliberately blocked for now. SQLite implements it by opening
+a second temporary database, while the current MVS VFS has only one main RRDS
+DD pair (`SQLDB`/`SQLJRN`). Aliasing that temporary file to `SQLDB` could
+damage the source database. Databases created by this project use
+`auto_vacuum=FULL`, so committed deletes already reclaim trailing RRDS pages.
+The safe next step is a second-DD VFS mapping used by backup, restore, and
+VACUUM.
 
 `.timeout` uses milliseconds. Zero restores immediate `SQLITE_BUSY`. The MVS
 VFS sleeps with `STIMER WAIT` between retries, so a waiting TSO session does

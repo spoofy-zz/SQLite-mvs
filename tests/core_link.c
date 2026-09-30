@@ -197,6 +197,11 @@ static int runSuite(sqlite3 *db)
         "SELECT count(*) FROM ts_child;", "1");
     if (rc == SQLITE_OK) rc = suiteSql(db, "cleanup",
         "DROP VIEW ts_view; DROP TABLE ts_child; DROP TABLE ts_parent;");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "analyze", "ANALYZE;");
+    if (rc == SQLITE_OK) rc = expectValue(db, "integrity",
+        "PRAGMA integrity_check;", "ok");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "foreign-key-check",
+        "PRAGMA foreign_key_check;");
     printf("SQLITE MVS TEST SUITE %s\n", rc == SQLITE_OK ? "PASSED" : "FAILED");
     return rc;
 }

@@ -3,18 +3,20 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include "sqlite3_mvs_names.h"
 #include "sqlite3.h"
 
 #define TSO_LINE 2048
-#define TSO_OUT 512
+#define TSO_OUT 2048
 #define TERM_ENTER 0x7d
 #define TERM_CLEAR 0x6d
 #define TERM_PF3   0xf3
 #define MODE_COLUMN 0
 #define MODE_LIST   1
 #define MODE_LINE   2
+#define MODE_CSV    3
 #define COLUMN_WIDTH 18
 #define MAX_COLUMNS 16
 
@@ -24,11 +26,16 @@ extern int tsqtclr(void) asm("TSQTCLR");
 
 typedef struct ShellState ShellState;
 typedef struct RowOutput RowOutput;
+static int dotCommand(sqlite3 *db, ShellState *shell, char *line);
+static int runScript(sqlite3 *db, ShellState *shell, FILE *input);
+static FILE *shellOutput = 0;
+static int shellOutputOnce = 0;
 struct ShellState {
     int headers;
     int mode;
     int echo;
     int changes;
+    int timer;
     int timeout;
     int widths[MAX_COLUMNS];
     char nullValue[32];
@@ -115,6 +122,23 @@ static void appendRule(char *line, int size, int *used, int width)
     appendText(line, size, used, rule);
 }
 
+static void appendCsv(char *line, int size, int *used, const char *text)
+{
+    const char *p;
+    int quote = 0;
+    for (p = text; *p; p++)
+        if (*p == ',' || *p == '"' || *p == '\r' || *p == '\n') quote = 1;
+    if (quote) appendText(line, size, used, "\"");
+    for (p = text; *p; p++) {
+        char one[2];
+        one[0] = *p;
+        one[1] = '\0';
+        if (*p == '"') appendText(line, size, used, "\"\"");
+        else appendText(line, size, used, one);
+    }
+    if (quote) appendText(line, size, used, "\"");
+}
+
 static int equalIgnoreCase(const char *left, const char *right)
 {
     while (*left && *right) {
@@ -147,7 +171,32 @@ static void tsoOut(const char *format, ...)
     va_end(args);
     if (length < 0) return;
     if (length >= (int)sizeof(output)) length = sizeof(output) - 1;
+    if (shellOutput) {
+        fwrite(output, 1, length, shellOutput);
+        fputc('\n', shellOutput);
+    } else {
+        tsqtput(output, length);
+    }
+}
+
+static void terminalOut(const char *format, ...)
+{
+    char output[TSO_OUT];
+    va_list args;
+    int length;
+    va_start(args, format);
+    length = vsnprintf(output, sizeof(output), format, args);
+    va_end(args);
+    if (length < 0) return;
+    if (length >= (int)sizeof(output)) length = sizeof(output) - 1;
     tsqtput(output, length);
+}
+
+static void closeShellOutput(void)
+{
+    if (shellOutput) fclose(shellOutput);
+    shellOutput = 0;
+    shellOutputOnce = 0;
 }
 
 static int printRow(void *context, int columns, char **values, char **names)
@@ -189,7 +238,7 @@ static int printRow(void *context, int columns, char **values, char **names)
                 else
                     appendColumn(line, sizeof(line), &used, names[i], width);
                 appendRule(rule, sizeof(rule), &ruleUsed, width);
-            } else {
+            } else if (output->shell->mode == MODE_LIST) {
                 int n;
                 if (i) {
                     appendText(line, sizeof(line), &used, " | ");
@@ -198,10 +247,13 @@ static int printRow(void *context, int columns, char **values, char **names)
                 appendText(line, sizeof(line), &used, names[i]);
                 for (n = 0; names[i][n]; n++)
                     appendText(rule, sizeof(rule), &ruleUsed, "-");
+            } else {
+                if (i) appendText(line, sizeof(line), &used, ",");
+                appendCsv(line, sizeof(line), &used, names[i]);
             }
         }
         tsoOut("%s", line);
-        tsoOut("%s", rule);
+        if (output->shell->mode != MODE_CSV) tsoOut("%s", rule);
         output->header = 1;
     }
     used = 0;
@@ -218,11 +270,15 @@ static int printRow(void *context, int columns, char **values, char **names)
                 appendColumn(line, sizeof(line), &used,
                              values[i] ? values[i] : output->shell->nullValue,
                              width);
-        } else {
+        } else if (output->shell->mode == MODE_LIST) {
             if (i) appendText(line, sizeof(line), &used,
                               output->shell->separator);
             appendText(line, sizeof(line), &used,
                        values[i] ? values[i] : output->shell->nullValue);
+        } else {
+            if (i) appendText(line, sizeof(line), &used, ",");
+            appendCsv(line, sizeof(line), &used,
+                      values[i] ? values[i] : output->shell->nullValue);
         }
     }
     tsoOut("%s", line);
@@ -245,6 +301,7 @@ static int executeSql(sqlite3 *db, ShellState *shell, const char *sql)
     RowOutput output;
     char *error = 0;
     int rc;
+    clock_t started = clock();
     output.header = 0;
     output.rows = 0;
     output.shell = shell;
@@ -265,6 +322,10 @@ static int executeSql(sqlite3 *db, ShellState *shell, const char *sql)
     if (rc == SQLITE_OK && shell->changes)
         tsoOut("Changes: %d  Total changes: %d", sqlite3_changes(db),
                sqlite3_total_changes(db));
+    if (shell->timer)
+        tsoOut("CPU time: %.3f seconds",
+               (double)(clock() - started) / (double)CLOCKS_PER_SEC);
+    if (shellOutputOnce) closeShellOutput();
     return rc;
 }
 
@@ -275,6 +336,7 @@ static void resetShell(ShellState *shell)
     shell->mode = MODE_COLUMN;
     shell->echo = 0;
     shell->changes = 0;
+    shell->timer = 0;
     shell->timeout = 0;
     strcpy(shell->nullValue, "NULL");
     strcpy(shell->separator, " | ");
@@ -284,6 +346,135 @@ static void resetShell(ShellState *shell)
 static char *sqlQuote(const char *value)
 {
     return sqlite3_mprintf("%q", value);
+}
+
+static int ddPath(const char *argument, char *path, int capacity)
+{
+    const char *name = argument;
+    int i;
+    int length;
+    if (startsIgnoreCase(name, "DD:")) name += 3;
+    length = (int)strlen(name);
+    if (length < 1 || length > 8) return 0;
+    for (i = 0; i < length; i++) {
+        unsigned char c = (unsigned char)name[i];
+        if (!(isalnum(c) || c == '@' || c == '#' || c == '$')) return 0;
+    }
+    snprintf(path, capacity, "DD:%s", name);
+    return 1;
+}
+
+static void traceSql(void *unused, const char *sql)
+{
+    (void)unused;
+    tsoOut("TRACE> %s", sql);
+}
+
+static void dumpValue(char *line, int size, int *used, sqlite3_stmt *row,
+                      int column)
+{
+    int type = sqlite3_column_type(row, column);
+    char *value = 0;
+    if (type == SQLITE_NULL) {
+        appendText(line, size, used, "NULL");
+    } else if (type == SQLITE_INTEGER) {
+        value = sqlite3_mprintf("%lld", sqlite3_column_int64(row, column));
+    } else if (type == SQLITE_FLOAT) {
+        value = sqlite3_mprintf("%!.15g", sqlite3_column_double(row, column));
+    } else if (type == SQLITE_BLOB) {
+        const unsigned char *blob = sqlite3_column_blob(row, column);
+        int bytes = sqlite3_column_bytes(row, column);
+        int i;
+        appendText(line, size, used, "X'");
+        for (i = 0; i < bytes && *used < size - 3; i++) {
+            char hex[3];
+            snprintf(hex, sizeof(hex), "%02X", blob[i]);
+            appendText(line, size, used, hex);
+        }
+        appendText(line, size, used, "'");
+    } else {
+        value = sqlite3_mprintf("%Q", sqlite3_column_text(row, column));
+    }
+    if (value) {
+        appendText(line, size, used, value);
+        sqlite3_free(value);
+    }
+}
+
+static int dumpTable(sqlite3 *db, const char *name)
+{
+    sqlite3_stmt *row = 0;
+    char *quoted = sqlite3_mprintf("\"%w\"", name);
+    char *sql;
+    int rc;
+    if (!quoted) return SQLITE_NOMEM;
+    sql = sqlite3_mprintf("SELECT * FROM %s;", quoted);
+    if (!sql) {
+        sqlite3_free(quoted);
+        return SQLITE_NOMEM;
+    }
+    rc = sqlite3_prepare_v2(db, sql, -1, &row, 0);
+    sqlite3_free(sql);
+    while (rc == SQLITE_OK && (rc = sqlite3_step(row)) == SQLITE_ROW) {
+        char line[TSO_LINE];
+        int used = 0;
+        int i;
+        int columns = sqlite3_column_count(row);
+        line[0] = '\0';
+        appendText(line, sizeof(line), &used, "INSERT INTO ");
+        appendText(line, sizeof(line), &used, quoted);
+        appendText(line, sizeof(line), &used, " VALUES(");
+        for (i = 0; i < columns; i++) {
+            if (i) appendText(line, sizeof(line), &used, ",");
+            dumpValue(line, sizeof(line), &used, row, i);
+        }
+        appendText(line, sizeof(line), &used, ");");
+        tsoOut("%s", line);
+    }
+    sqlite3_finalize(row);
+    sqlite3_free(quoted);
+    return rc == SQLITE_DONE ? SQLITE_OK : rc;
+}
+
+static int dumpDatabase(sqlite3 *db, const char *onlyTable)
+{
+    sqlite3_stmt *master = 0;
+    int rc;
+    rc = sqlite3_prepare_v2(db,
+        "SELECT name,sql FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%' AND (?1='' OR name=?1) "
+        "ORDER BY name;", -1, &master, 0);
+    if (rc != SQLITE_OK) return rc;
+    sqlite3_bind_text(master, 1, onlyTable, -1, SQLITE_TRANSIENT);
+    tsoOut("PRAGMA foreign_keys=OFF;");
+    tsoOut("BEGIN TRANSACTION;");
+    while ((rc = sqlite3_step(master)) == SQLITE_ROW) {
+        const char *name = (const char *)sqlite3_column_text(master, 0);
+        const char *schema = (const char *)sqlite3_column_text(master, 1);
+        if (schema) tsoOut("%s;", schema);
+        rc = dumpTable(db, name);
+        if (rc != SQLITE_OK) break;
+    }
+    sqlite3_finalize(master);
+    if (rc == SQLITE_DONE) {
+        rc = sqlite3_prepare_v2(db,
+            "SELECT sql FROM sqlite_master WHERE type IN "
+            "('index','trigger','view') AND sql IS NOT NULL "
+            "AND (?1='' OR tbl_name=?1) ORDER BY type,name;",
+            -1, &master, 0);
+        if (rc == SQLITE_OK) {
+            sqlite3_bind_text(master, 1, onlyTable, -1, SQLITE_TRANSIENT);
+            while ((rc = sqlite3_step(master)) == SQLITE_ROW)
+                tsoOut("%s;", sqlite3_column_text(master, 0));
+            sqlite3_finalize(master);
+        }
+    }
+    if (rc == SQLITE_DONE) {
+        tsoOut("COMMIT;");
+        return SQLITE_OK;
+    }
+    tsoOut("ROLLBACK;");
+    return rc;
 }
 
 static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
@@ -300,17 +491,27 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut(".databases          List attached databases");
         tsoOut(".foreignkeys on|off Enable or disable FK checks");
         tsoOut(".stats              Show database statistics");
+        tsoOut(".integrity_check    Run database integrity check");
+        tsoOut(".foreign_key_check  Find foreign-key violations");
+        tsoOut(".analyze            Refresh query planner statistics");
+        tsoOut(".vacuum             Rebuild and compact the database");
         tsoOut(".lastid             Show last inserted rowid");
         tsoOut(".headers on|off     Show or hide column headers");
-        tsoOut(".mode column|list|line  Select output format");
+        tsoOut(".mode column|list|line|csv  Select output format");
         tsoOut(".separator TEXT     Set list-mode separator");
         tsoOut(".width N ...        Set column widths (1-80)");
         tsoOut(".nullvalue TEXT     Set NULL display text");
         tsoOut(".echo on|off        Echo SQL before execution");
         tsoOut(".changes on|off     Show per-statement change counts");
+        tsoOut(".timer on|off       Show SQL CPU time");
+        tsoOut(".trace on|off       Show statements executed by SQLite");
         tsoOut(".timeout MS         Wait for locks (0 disables)");
         tsoOut(".show               Show shell settings");
         tsoOut(".reset              Restore default shell settings");
+        tsoOut(".read DDNAME        Execute SQL from an allocated DD");
+        tsoOut(".output DDNAME      Redirect output (.output terminal)");
+        tsoOut(".once DDNAME        Redirect the next SQL result");
+        tsoOut(".dump [table]       Write database as SQL text");
         tsoOut(".clear              Clear screen and move cursor home");
         tsoOut(".version            Show SQLite version");
         tsoOut(".quit / .exit       Return to TSO READY");
@@ -386,6 +587,17 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         executeSql(db, shell, "PRAGMA freelist_count;");
         executeSql(db, shell, "PRAGMA journal_mode;");
         executeSql(db, shell, "PRAGMA synchronous;");
+    } else if (equalIgnoreCase(line, ".integrity") ||
+               equalIgnoreCase(line, ".integrity_check")) {
+        executeSql(db, shell, "PRAGMA integrity_check;");
+    } else if (equalIgnoreCase(line, ".fkcheck") ||
+               equalIgnoreCase(line, ".foreign_key_check")) {
+        executeSql(db, shell, "PRAGMA foreign_key_check;");
+    } else if (equalIgnoreCase(line, ".analyze")) {
+        executeSql(db, shell, "ANALYZE;");
+    } else if (equalIgnoreCase(line, ".vacuum")) {
+        tsoOut("UNSUPPORTED: VACUUM needs a second RRDS temporary database");
+        tsoOut("Use auto_vacuum=FULL; raw RRDS aliasing is intentionally blocked");
     } else if (equalIgnoreCase(line, ".lastid")) {
         tsoOut("Last insert rowid");
         tsoOut("-----------------");
@@ -415,8 +627,11 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         } else if (equalIgnoreCase(value, "line")) {
             shell->mode = MODE_LINE;
             tsoOut("Mode: line");
+        } else if (equalIgnoreCase(value, "csv")) {
+            shell->mode = MODE_CSV;
+            tsoOut("Mode: csv");
         }
-        else tsoOut("Usage: .mode column|list|line");
+        else tsoOut("Usage: .mode column|list|line|csv");
     } else if (startsIgnoreCase(line, ".separator")) {
         char *value = trim(line + 10);
         if (!*value || strlen(value) >= sizeof(shell->separator))
@@ -468,6 +683,24 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
             return 0;
         }
         tsoOut("Changes: %s", shell->changes ? "on" : "off");
+    } else if (startsIgnoreCase(line, ".timer")) {
+        char *value = trim(line + 6);
+        if (equalIgnoreCase(value, "on")) shell->timer = 1;
+        else if (equalIgnoreCase(value, "off")) shell->timer = 0;
+        else {
+            tsoOut("Usage: .timer on|off");
+            return 0;
+        }
+        tsoOut("Timer: %s", shell->timer ? "on" : "off");
+    } else if (startsIgnoreCase(line, ".trace")) {
+        char *value = trim(line + 6);
+        if (equalIgnoreCase(value, "on")) {
+            sqlite3_trace(db, traceSql, 0);
+            tsoOut("Trace: on");
+        } else if (equalIgnoreCase(value, "off")) {
+            sqlite3_trace(db, 0, 0);
+            tsoOut("Trace: off");
+        } else tsoOut("Usage: .trace on|off");
     } else if (startsIgnoreCase(line, ".timeout")) {
         char *value = trim(line + 8);
         int timeout = atoi(value);
@@ -483,21 +716,100 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut("headers             %s", shell->headers ? "on" : "off");
         tsoOut("mode                %s",
                shell->mode == MODE_COLUMN ? "column" :
-               (shell->mode == MODE_LIST ? "list" : "line"));
+               (shell->mode == MODE_LIST ? "list" :
+               (shell->mode == MODE_LINE ? "line" : "csv")));
         tsoOut("echo                %s", shell->echo ? "on" : "off");
         tsoOut("changes             %s", shell->changes ? "on" : "off");
+        tsoOut("timer               %s", shell->timer ? "on" : "off");
         tsoOut("timeout             %d ms", shell->timeout);
         tsoOut("nullvalue           %s", shell->nullValue);
         tsoOut("separator           %s", shell->separator);
     } else if (equalIgnoreCase(line, ".reset")) {
         resetShell(shell);
         sqlite3_busy_timeout(db, 0);
+        sqlite3_trace(db, 0, 0);
         tsoOut("Shell settings restored to defaults");
+    } else if (startsIgnoreCase(line, ".read")) {
+        char path[16];
+        char *name = trim(line + 5);
+        FILE *input;
+        if (!ddPath(name, path, sizeof(path))) {
+            tsoOut("Usage: .read DDNAME (1-8 DD characters)");
+        } else {
+            input = fopen(path, "r");
+            if (!input) tsoOut("ERROR: cannot open %s for input", path);
+            else {
+                runScript(db, shell, input);
+                fclose(input);
+            }
+        }
+    } else if (startsIgnoreCase(line, ".dump")) {
+        char *name = trim(line + 5);
+        int rc = dumpDatabase(db, name);
+        if (rc != SQLITE_OK)
+            tsoOut("ERROR %d while creating dump: %s", rc,
+                   sqlite3_errmsg(db));
+        if (shellOutputOnce) closeShellOutput();
+    } else if (startsIgnoreCase(line, ".output") ||
+               startsIgnoreCase(line, ".once")) {
+        int once = startsIgnoreCase(line, ".once");
+        char *name = trim(line + (once ? 5 : 7));
+        char path[16];
+        FILE *output;
+        if (!once && equalIgnoreCase(name, "terminal")) {
+            closeShellOutput();
+            terminalOut("Output: terminal");
+        } else if (!ddPath(name, path, sizeof(path))) {
+            tsoOut("Usage: %s DDNAME", once ? ".once" : ".output");
+        } else {
+            output = fopen(path, "w");
+            if (!output) tsoOut("ERROR: cannot open %s for output", path);
+            else {
+                closeShellOutput();
+                shellOutput = output;
+                shellOutputOnce = once;
+                terminalOut("Output: %s%s", path, once ? " (once)" : "");
+            }
+        }
     } else if (equalIgnoreCase(line, ".clear")) {
         if (tsqtclr() != 0) tsoOut("ERROR: cannot clear terminal screen");
     } else {
         tsoOut("Unknown command. Use .help");
     }
+    return 0;
+}
+
+static int runScript(sqlite3 *db, ShellState *shell, FILE *input)
+{
+    char line[TSO_LINE];
+    char statement[TSO_LINE];
+    char *text;
+    int lineNumber = 0;
+    statement[0] = '\0';
+    while (fgets(line, sizeof(line), input)) {
+        lineNumber++;
+        text = trim(line);
+        if (!*text || (text[0] == '-' && text[1] == '-')) continue;
+        if (!statement[0] && text[0] == '.') {
+            if (dotCommand(db, shell, text)) return 1;
+            continue;
+        }
+        if ((int)strlen(statement) + (int)strlen(text) + 2 >= TSO_LINE) {
+            tsoOut("ERROR: script statement too long near line %d",
+                   lineNumber);
+            statement[0] = '\0';
+            continue;
+        }
+        if (statement[0]) strcat(statement, " ");
+        strcat(statement, text);
+        if (sqlite3_complete(statement)) {
+            executeSql(db, shell, statement);
+            statement[0] = '\0';
+        }
+    }
+    if (statement[0])
+        tsoOut("ERROR: incomplete SQL at end of input near line %d",
+               lineNumber);
     return 0;
 }
 
@@ -527,7 +839,7 @@ int main(void)
     tsoOut("SQLite %s for MVS TSO", sqlite3_libversion());
     tsoOut("Use .help for commands");
     for (;;) {
-        tsoOut(statement[0] ? "   ...> " : "sqlite> ");
+        terminalOut(statement[0] ? "   ...> " : "sqlite> ");
         memset(line, 0, sizeof(line));
         memset(raw, 0, sizeof(raw));
         length = tsqtget((char *)raw, sizeof(raw));
@@ -567,6 +879,7 @@ int main(void)
             statement[0] = '\0';
         }
     }
+    closeShellOutput();
     sqlite3_close(db);
     sqlite3_shutdown();
     tsoOut("SQLite TSO session ended");

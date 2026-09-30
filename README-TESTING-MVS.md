@@ -71,8 +71,11 @@ SQL can span multiple input lines; execution starts when
 `sqlite3_complete()` sees a terminating semicolon. Available shell commands
 include `.help`, `.tables`, `.indexes [table]`, `.schema [table]`,
 `.tableinfo table`, `.databases`, `.foreignkeys`, `.stats`, `.lastid`,
-`.headers`, `.mode column|list|line`, `.separator`, `.changes`, `.reset`,
-`.version`, `.quit`, and `.exit`. Column mode is the default and underlines
+`.headers`, `.mode column|list|line|csv`, `.separator`, `.changes`, `.timer`,
+`.trace`, `.read`, `.output`, `.once`, `.integrity_check`,
+`.foreign_key_check`, `.analyze`, `.dump`, `.reset`, `.version`, `.quit`, and
+`.exit`.
+Column mode is the default and underlines
 its headers; list mode uses a configurable separator; line mode is convenient
 for wide rows. PF3 is an immediate exit key; Clear discards a partially
 entered SQL statement and clears the display. `.clear` performs the same
