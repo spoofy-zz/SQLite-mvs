@@ -11,6 +11,6 @@
           VOLUMES(TSO003) -
           UNIQUE -
           SPEED -
-          SHAREOPTIONS(1 3)) -
+          SHAREOPTIONS(3 3)) -
         DATA (NAME(IBMUSER.SQLITE.RRDS.DATA))
 /*

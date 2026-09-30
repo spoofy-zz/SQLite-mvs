@@ -55,10 +55,17 @@ The smoke path also enables full auto-vacuum, grows the database with a
 implements SQLite `xTruncate` by issuing positioned VSAM `ERASE` operations
 for RRNs above the new logical end.
 
+SQLite file locking is mapped to MVS SYSTEM-scope ENQ/DEQ resources for
+shared readers, the reserved writer, and the pending gate. The RRDS therefore
+uses `SHAREOPTIONS(3 3)`, leaving cross-address-space serialization to the
+VFS. A two-job test confirmed that `jcl/lock-holder.jcl` can hold
+`BEGIN IMMEDIATE` while the class-B `jcl/lock-probe.jcl` receives the expected
+`SQLITE_BUSY` instead of writing concurrently.
+
 Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
 `SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection. This
-phase deliberately uses `journal_mode=OFF` and process-local locking; crash
-recovery and ENQ/DEQ come next.
+phase deliberately uses `journal_mode=OFF`; rollback-journal storage and crash
+recovery come next.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
 

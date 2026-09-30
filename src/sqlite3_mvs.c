@@ -6,10 +6,15 @@
 
 #include "sqlite3_mvs_names.h"
 #include "sqlite3.h"
+#include <clibenq.h>
 #include <clibvsam.h>
 
 #define MVS_PAGE_SIZE 4096
 #define MVS_DDNAME "SQLDB"
+#define MVS_LOCK_QNAME "SQLITE"
+#define MVS_LOCK_READ "SQLDB.READ"
+#define MVS_LOCK_WRITE "SQLDB.WRITE"
+#define MVS_LOCK_PENDING "SQLDB.PENDING"
 
 typedef struct MvsFile MvsFile;
 struct MvsFile {
@@ -94,6 +99,9 @@ static int mvsClose(sqlite3_file *base)
 {
     MvsFile *file = (MvsFile *)base;
     int rc = SQLITE_OK;
+    if (file->lock != SQLITE_LOCK_NONE &&
+        mvsUnlock(base, SQLITE_LOCK_NONE) != SQLITE_OK)
+        rc = SQLITE_IOERR_UNLOCK;
     if (file->vs && __vsclos(file->vs) != 0) rc = SQLITE_IOERR_CLOSE;
     file->vs = 0;
     file->base.pMethods = 0;
@@ -178,14 +186,95 @@ static int mvsSync(sqlite3_file *base, int flags)
 static int mvsFileSize(sqlite3_file *base, sqlite3_int64 *size)
 { *size = ((MvsFile *)base)->size; return SQLITE_OK; }
 
-static int mvsLock(sqlite3_file *base, int lock)
-{ MvsFile *f = (MvsFile *)base; if (lock > f->lock) f->lock = lock; return SQLITE_OK; }
+static int mvsEnq(const char *resource, unsigned options)
+{
+    return ENQ(MVS_LOCK_QNAME, resource, ENQ_SYSTEM | options);
+}
 
-static int mvsUnlock(sqlite3_file *base, int lock)
-{ ((MvsFile *)base)->lock = lock; return SQLITE_OK; }
+static int mvsDeq(const char *resource)
+{
+    return DEQ(MVS_LOCK_QNAME, resource, ENQ_SYSTEM | ENQ_HAVE);
+}
+
+static int mvsLock(sqlite3_file *base, int target)
+{
+    MvsFile *file = (MvsFile *)base;
+    int rc;
+    if (target <= file->lock) return SQLITE_OK;
+
+    if (file->lock == SQLITE_LOCK_NONE) {
+        rc = mvsEnq(MVS_LOCK_PENDING, ENQ_USE | ENQ_SHR);
+        if (rc != 0) return SQLITE_BUSY;
+        rc = mvsEnq(MVS_LOCK_READ, ENQ_USE | ENQ_SHR);
+        mvsDeq(MVS_LOCK_PENDING);
+        if (rc != 0) return SQLITE_BUSY;
+        file->lock = SQLITE_LOCK_SHARED;
+    }
+    if (target == SQLITE_LOCK_SHARED) return SQLITE_OK;
+
+    if (file->lock == SQLITE_LOCK_SHARED) {
+        rc = mvsEnq(MVS_LOCK_WRITE, ENQ_USE | ENQ_EXC);
+        if (rc != 0) return SQLITE_BUSY;
+        file->lock = SQLITE_LOCK_RESERVED;
+    }
+    if (target == SQLITE_LOCK_RESERVED) return SQLITE_OK;
+
+    if (file->lock == SQLITE_LOCK_RESERVED) {
+        rc = mvsEnq(MVS_LOCK_PENDING, ENQ_USE | ENQ_EXC);
+        if (rc != 0) return SQLITE_BUSY;
+        file->lock = SQLITE_LOCK_PENDING;
+    }
+    if (target == SQLITE_LOCK_PENDING) return SQLITE_OK;
+
+    rc = mvsEnq(MVS_LOCK_READ, ENQ_CHNG | ENQ_EXC);
+    if (rc != 0) return SQLITE_BUSY;
+    file->lock = SQLITE_LOCK_EXCLUSIVE;
+    return SQLITE_OK;
+}
+
+static int mvsUnlock(sqlite3_file *base, int target)
+{
+    MvsFile *file = (MvsFile *)base;
+    int failed = 0;
+    if (target >= file->lock) return SQLITE_OK;
+
+    if (target == SQLITE_LOCK_SHARED) {
+        if (file->lock == SQLITE_LOCK_EXCLUSIVE &&
+            mvsEnq(MVS_LOCK_READ, ENQ_CHNG | ENQ_SHR) != 0)
+            failed = 1;
+        if (file->lock >= SQLITE_LOCK_PENDING &&
+            mvsDeq(MVS_LOCK_PENDING) != 0)
+            failed = 1;
+        if (file->lock >= SQLITE_LOCK_RESERVED &&
+            mvsDeq(MVS_LOCK_WRITE) != 0)
+            failed = 1;
+    } else {
+        if (file->lock >= SQLITE_LOCK_PENDING &&
+            mvsDeq(MVS_LOCK_PENDING) != 0)
+            failed = 1;
+        if (file->lock >= SQLITE_LOCK_RESERVED &&
+            mvsDeq(MVS_LOCK_WRITE) != 0)
+            failed = 1;
+        if (file->lock >= SQLITE_LOCK_SHARED &&
+            mvsDeq(MVS_LOCK_READ) != 0)
+            failed = 1;
+    }
+    if (!failed) file->lock = target;
+    return failed ? SQLITE_IOERR_UNLOCK : SQLITE_OK;
+}
 
 static int mvsCheckReservedLock(sqlite3_file *base, int *result)
-{ *result = ((MvsFile *)base)->lock >= SQLITE_LOCK_RESERVED; return SQLITE_OK; }
+{
+    MvsFile *file = (MvsFile *)base;
+    int rc;
+    if (file->lock >= SQLITE_LOCK_RESERVED) {
+        *result = 1;
+        return SQLITE_OK;
+    }
+    rc = mvsEnq(MVS_LOCK_WRITE, ENQ_TEST | ENQ_EXC);
+    *result = rc != 0;
+    return SQLITE_OK;
+}
 
 static int mvsFileControl(sqlite3_file *base, int op, void *arg)
 {

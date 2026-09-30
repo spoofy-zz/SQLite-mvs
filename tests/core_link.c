@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <string.h>
+#include <time.h>
 
 #include "sqlite3_mvs_names.h"
 #include "sqlite3.h"
@@ -24,7 +26,33 @@ static int runSql(sqlite3 *db, const char *label, const char *sql,
     return rc;
 }
 
-int main(void)
+static int runLockTest(sqlite3 *db, int holder)
+{
+    char *error = 0;
+    int rc = sqlite3_exec(db, "PRAGMA journal_mode=OFF; BEGIN IMMEDIATE;",
+                          0, 0, &error);
+    printf("lock-%s begin rc=%d%s%s\n", holder ? "holder" : "probe", rc,
+           error ? " error=" : "", error ? error : "");
+    if (error) sqlite3_free(error);
+    if (!holder) {
+        if (rc == SQLITE_BUSY) {
+            printf("lock-probe expected SQLITE_BUSY\n");
+            return SQLITE_OK;
+        }
+        if (rc == SQLITE_OK) sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+        return SQLITE_ERROR;
+    }
+    if (rc == SQLITE_OK) {
+        time_t until = time(0) + 15;
+        printf("lock-holder acquired; holding 15 seconds\n");
+        while (time(0) < until) { }
+        rc = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+        printf("lock-holder commit rc=%d\n", rc);
+    }
+    return rc;
+}
+
+int main(int argc, char **argv)
 {
     sqlite3 *db = 0;
     sqlite3_vfs *vfs;
@@ -40,6 +68,11 @@ int main(void)
         rc = sqlite3_open_v2("SQLDB", &db,
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "mvs-rrds");
     printf("open rc=%d db=%p\n", rc, db);
+    if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "HOLD") == 0)
+        rc = runLockTest(db, 1);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "PROBE") == 0)
+        rc = runLockTest(db, 0);
+    else {
     if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=OFF;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=OFF;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "auto-vacuum", "PRAGMA auto_vacuum=FULL;", 0);
@@ -57,6 +90,7 @@ int main(void)
         "PRAGMA page_count;", printRow);
     if (rc == SQLITE_OK) rc = runSql(db, "select",
         "SELECT id,value FROM smoke ORDER BY id DESC LIMIT 1;", printRow);
+    }
     if (rc != SQLITE_OK)
         printf("SQLite rc=%d error=%s\n", rc,
                db ? sqlite3_errmsg(db) : "open failed");
