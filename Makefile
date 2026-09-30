@@ -29,7 +29,7 @@ SQLITE_MVS_CPPFLAGS := \
 	-DSQLITE_MAX_MMAP_SIZE=0 \
 	-DSQLITE_OMIT_AUTOINIT=1
 
-.PHONY: probe probe-c probe-asm probe-link tso names sdk as370-large clean mbt-build
+.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-bridge names sdk as370-large clean mbt-build
 
 sdk:
 	$(MAKE) -C toolchain/cc370 PREFIX=$(SDK_ROOT) install
@@ -104,6 +104,25 @@ tso: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt0.o \
 		$^ -lc -iebcopy -o $(BUILDDIR)/SQLITSO
 
+$(BUILDDIR)/sqlite_cobol_start.o: src/sqlite_cobol_start.c include/sqlite_cobol.h
+	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+
+$(BUILDDIR)/sqlite_cobol_api.o: src/sqlite_cobol_api.c include/sqlite_cobol.h
+	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+
+cobol-api: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
+		$(BUILDDIR)/sqlite_cobol_start.o $(BUILDDIR)/sqlite_cobol_api.o
+	$(LD370) -L$(shell dirname $$(command -v $(CC370)))/../cc370/lib \
+		--name SQLITEA -e @@CRT0 \
+		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
+		$^ -lc -iebcopy -o $(BUILDDIR)/SQLITEA
+
+$(BUILDDIR)/sqliteabr.o: asm/sqliteabr.asm
+	@mkdir -p $(BUILDDIR)
+	$(AS370) -o $@ $<
+
+cobol-bridge: $(BUILDDIR)/sqliteabr.o
+
 # Full MBT integration is intentionally separate from the compiler probe.
 # It becomes the normal build once the amalgamation can produce an object.
 mbt-build:
@@ -114,4 +133,6 @@ clean:
 		$(BUILDDIR)/sqlite3_mvs.o $(BUILDDIR)/core_link.o $(BUILDDIR)/SQLTTEST \
 		$(BUILDDIR)/sqlite_tso.o $(BUILDDIR)/tsqtget.o $(BUILDDIR)/tsqtput.o \
 		$(BUILDDIR)/SQLITSO \
+		$(BUILDDIR)/sqlite_cobol_start.o $(BUILDDIR)/sqlite_cobol_api.o \
+		$(BUILDDIR)/sqliteabr.o $(BUILDDIR)/SQLITEA \
 		$(BUILDDIR)/cc370.log $(BUILDDIR)/as370.log

@@ -42,6 +42,17 @@ sources = [
   "asm/tsqtput.asm",
 ]
 
+[[module]]
+name = "SQLITEA"
+entry = "@@CRT0"
+startup = "crt1"
+sources = [
+  "vendor/sqlite/sqlite3.c",
+  "src/sqlite3_mvs.c",
+  "src/sqlite_cobol_start.c",
+  "src/sqlite_cobol_api.c",
+]
+
 [deploy]
 target = "IBMUSER.SQLITE.LOAD"
 

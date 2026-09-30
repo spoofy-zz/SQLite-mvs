@@ -107,6 +107,8 @@ See `README-TESTDB.md` for the separate 20-person/60-order sample database and
 the `TESTDB` TSO command.
 See `README-CREATE-DATABASE.md` for creating another empty RRDS database and a
 dedicated TSO launcher.
+See `README-COBOL-API.md` for the verified OS/VS COBOL `CALL 'SQLITEA'`
+interface, copybook, bridge installation, and example job.
 
 ## MBT
 
