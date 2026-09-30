@@ -1,9 +1,9 @@
 # SQLite people search for KICKS
 
 This sample is a small KICKS application that calls the SQLite MVS COBOL API.
-It searches the `people` table in `IBMUSER.SQLITE.TESTDB` by exact name or
-city, lists the first ten people when filters are blank, and displays a
-person's orders by ID. It now uses typed `SQLITEX` binds and result cells.
+It searches the `people` table in `IBMUSER.SQLITE.TESTDB` by name or city
+prefix, displays ten people per page, and displays a person's orders by ID.
+It uses typed `SQLITEX` binds and result cells.
 
 The application follows the same layout as the KICKS `fuel` and `store`
 samples: a BMS map, an OS/VS COBOL command-level program, separate PCT/PPT
@@ -26,13 +26,14 @@ Start transaction `SQLS`. Enter either a name or a city:
 ```
 
 - `ENTER` searches people. If both fields are filled, name takes precedence.
+- `PF7` displays the previous page and `PF8` the next page.
 - `PF5` lists orders for the ID field.
 - `PF4` clears both fields and the result area.
 - `PF3` leaves the transaction and returns to KICKS.
 
-The search is exact after trimming the ten-character input field. Useful
-values from the supplied test database include names `P01` through `P20` and
-cities such as `ZAGREB`.
+The search matches from the beginning after trimming the ten-character input
+field. For example, `P0` finds `P01` through `P09`, while `ZAG` finds people
+in `ZAGREB`. Blank filters page through all people in ID order.
 
 The screen does not concatenate BMS input into SQL. Name, city, and ID values
 are passed through `sqlite3_bind_text`/`sqlite3_bind_int64` by `SQLITEX`.
@@ -106,17 +107,19 @@ and lets the bridge's `LOAD EP=SQLITEA` find the API module. Merely placing
 for an MVS LOAD issued by an application program.
 
 For a non-interactive runtime check, submit `TEST.jcl` and inspect its
-`CRLPOUT` spool file. It starts transaction `SQLS`, enters `P01` in the name
-field, and should display the matching `P01 | ZAGREB` row without a KICKS
-abend or `SQLITE API ERROR` message.
+`CRLPOUT` spool file. It verifies page 1, PF8 page 2, the end-of-results PF8
+boundary, PF7 back to page 1, PF4 clear, and PF5 orders for person 1.
 
 Verified on MVS 3.8j/Turnkey5 as JOB01275: the KICKS step ended `CC 0000` and
 the CRLP screen displayed `1 | P01 | ZAGREB | 21` plus `SEARCH COMPLETE`.
+Paging and its last-page boundary were verified as JOB01317 (`CC 0000`): page
+1 displayed P01-P10, page 2 displayed P11-P20, and an additional PF8 remained
+on page 2.
 
-Fixed-width BMS name and city inputs are bound at their full 10-byte length.
-The search SQL applies `RTRIM(?)`, so trailing BMS padding does not prevent an
-exact match (for example, entering `ZAGREB` in the CITY field finds all people
-whose city is `ZAGREB`).
+Before binding, the program trims fixed-width BMS name and city inputs and
+appends `%`, so trailing BMS padding does not prevent a `LIKE ?` prefix match.
+The current offset and active filter are retained in the KICKS COMMAREA across
+PF7/PF8 requests.
 
 ## Run on TSO
 

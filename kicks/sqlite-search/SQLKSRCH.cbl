@@ -6,28 +6,45 @@
        01  AID-PF3                 PIC X VALUE X'F3'.
        01  AID-PF4                 PIC X VALUE X'F4'.
        01  AID-PF5                 PIC X VALUE X'F5'.
+       01  AID-PF7                 PIC X VALUE X'F7'.
+       01  AID-PF8                 PIC X VALUE X'F8'.
        01  WS-RESP                 PIC S9(8) COMP VALUE +0.
-       01  WS-CA                   PIC X VALUE SPACE.
+       01  WS-CA.
+           05 WS-CA-OFFSET         PIC S9(4) COMP VALUE +0.
+           05 WS-CA-NAME           PIC X(10) VALUE SPACES.
+           05 WS-CA-CITY           PIC X(10) VALUE SPACES.
        01  WS-SEARCH-NAME.
            05 FILLER PIC X(36) VALUE
               'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
-           05 FILLER PIC X(31) VALUE
-              'WHERE NAME=RTRIM(?) ORDER BY ID'.
+           05 FILLER PIC X(30) VALUE
+              'WHERE NAME LIKE ? ORDER BY ID '.
+           05 FILLER PIC X(17) VALUE 'LIMIT 10 OFFSET ?'.
        01  WS-SEARCH-CITY.
            05 FILLER PIC X(36) VALUE
               'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
-           05 FILLER PIC X(31) VALUE
-              'WHERE CITY=RTRIM(?) ORDER BY ID'.
+           05 FILLER PIC X(30) VALUE
+              'WHERE CITY LIKE ? ORDER BY ID '.
+           05 FILLER PIC X(17) VALUE 'LIMIT 10 OFFSET ?'.
        01  WS-SEARCH-ALL.
            05 FILLER PIC X(36) VALUE
               'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
-           05 FILLER PIC X(20) VALUE 'ORDER BY ID LIMIT 10'.
+           05 FILLER PIC X(29) VALUE
+              'ORDER BY ID LIMIT 10 OFFSET ?'.
        01  WS-ORDERS.
            05 FILLER PIC X(53) VALUE
               'SELECT ID,PEOPLE_ID,ITEM,QUANTITY,AMOUNT FROM ORDERS '.
            05 FILLER PIC X(29) VALUE
               'WHERE PEOPLE_ID=? ORDER BY ID'.
        01  WS-I                    PIC S9(4) COMP VALUE +0.
+       01  WS-PATTERN.
+           05 WS-PATTERN-CHAR      PIC X OCCURS 11 TIMES.
+       01  WS-OFFSET-TEXT          PIC 9(5) VALUE ZERO.
+       01  WS-PAGE                 PIC 99 VALUE ZERO.
+       01  WS-PAGE-INFO.
+           05 FILLER               PIC X(5) VALUE 'PAGE '.
+           05 WS-PAGE-OUT          PIC 99.
+           05 FILLER               PIC X(25) VALUE
+              ' - PREFIX SEARCH COMPLETE'.
        01  WS-RESULT-LINES.
            05 WS-RESULT-LINE OCCURS 10 TIMES.
               10 WS-R-ID           PIC X(8).
@@ -42,12 +59,16 @@
            COPY SQLITEX.
            COPY SQLKMAP.
        LINKAGE SECTION.
-       01  DFHCOMMAREA             PIC X.
+       01  DFHCOMMAREA.
+           05 CA-OFFSET            PIC S9(4) COMP.
+           05 CA-NAME              PIC X(10).
+           05 CA-CITY              PIC X(10).
        PROCEDURE DIVISION.
        MAIN.
            IF EIBCALEN = 0
                PERFORM SEND-EMPTY THRU SEND-EMPTY-EXIT
                GO TO RETURN-TRANS.
+           MOVE DFHCOMMAREA TO WS-CA.
            IF EIBAID = AID-PF3
                EXEC CICS SEND CONTROL ERASE FREEKB END-EXEC
                EXEC CICS RETURN END-EXEC.
@@ -63,36 +84,103 @@
            IF EIBAID = AID-PF5
                PERFORM PREPARE-ORDERS THRU PREPARE-ORDERS-EXIT
            ELSE
+               PERFORM UPDATE-PAGE THRU UPDATE-PAGE-EXIT
                PERFORM PREPARE-PEOPLE THRU PREPARE-PEOPLE-EXIT.
            IF SQLX-RETURN-CODE = -1
                PERFORM SEND-ERROR THRU SEND-ERROR-EXIT
                GO TO RETURN-TRANS.
            CALL 'SQLITEX' USING SQLX-REQUEST.
+           IF EIBAID = AID-PF8
+               PERFORM CHECK-LAST-PAGE THRU CHECK-LAST-PAGE-EXIT.
            PERFORM FORMAT-ROWS THRU FORMAT-ROWS-EXIT.
            PERFORM SEND-RESULT THRU SEND-RESULT-EXIT.
            GO TO RETURN-TRANS.
+       CHECK-LAST-PAGE.
+           IF SQLX-ROW-COUNT NOT = 0
+               GO TO CHECK-LAST-PAGE-EXIT.
+           IF WS-CA-OFFSET = 0
+               GO TO CHECK-LAST-PAGE-EXIT.
+           SUBTRACT 10 FROM WS-CA-OFFSET.
+           MOVE SPACES TO SQLX-REQUEST.
+           MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
+           MOVE 'EXECUTE' TO SQLX-OPERATION.
+           MOVE 10 TO SQLX-MAX-ROWS.
+           PERFORM PREPARE-PEOPLE THRU PREPARE-PEOPLE-EXIT.
+           CALL 'SQLITEX' USING SQLX-REQUEST.
+       CHECK-LAST-PAGE-EXIT.
+           EXIT.
+       UPDATE-PAGE.
+           IF EIBAID = AID-PF7
+               PERFORM PAGE-BACK THRU PAGE-BACK-EXIT
+               GO TO UPDATE-PAGE-EXIT.
+           IF EIBAID = AID-PF8
+               ADD 10 TO WS-CA-OFFSET
+               GO TO UPDATE-PAGE-EXIT.
+           MOVE 0 TO WS-CA-OFFSET.
+           MOVE SPACES TO WS-CA-NAME WS-CA-CITY.
+           IF SRNAMEI NOT = LOW-VALUES AND SRNAMEI NOT = SPACES
+               MOVE SRNAMEI TO WS-CA-NAME
+               GO TO UPDATE-PAGE-EXIT.
+           IF SRCITYI NOT = LOW-VALUES AND SRCITYI NOT = SPACES
+               MOVE SRCITYI TO WS-CA-CITY.
+       UPDATE-PAGE-EXIT.
+           EXIT.
+       PAGE-BACK.
+           IF WS-CA-OFFSET > 0
+               SUBTRACT 10 FROM WS-CA-OFFSET.
+       PAGE-BACK-EXIT.
+           EXIT.
        PREPARE-PEOPLE.
            MOVE 'ID      NAME                CITY                AGE'
              TO HDRO.
-           IF SRNAMEI NOT = LOW-VALUES AND SRNAMEI NOT = SPACES
+           MOVE WS-CA-OFFSET TO WS-OFFSET-TEXT.
+           IF WS-CA-NAME NOT = SPACES
                MOVE WS-SEARCH-NAME TO SQLX-SQL
-               MOVE 67 TO SQLX-SQL-LENGTH
-               MOVE 1 TO SQLX-BIND-COUNT
+               MOVE 83 TO SQLX-SQL-LENGTH
+               MOVE 2 TO SQLX-BIND-COUNT
                MOVE 'T' TO SQLX-BIND-TYPE (1)
-               MOVE 10 TO SQLX-BIND-LENGTH (1)
-               MOVE SRNAMEI TO SQLX-BIND-VALUE (1)
+               MOVE WS-CA-NAME TO WS-PATTERN
+               PERFORM BUILD-PATTERN THRU BUILD-PATTERN-EXIT
+               MOVE WS-I TO SQLX-BIND-LENGTH (1)
+               MOVE WS-PATTERN TO SQLX-BIND-VALUE (1)
+               PERFORM BIND-OFFSET THRU BIND-OFFSET-EXIT
                GO TO PREPARE-PEOPLE-EXIT.
-           IF SRCITYI NOT = LOW-VALUES AND SRCITYI NOT = SPACES
+           IF WS-CA-CITY NOT = SPACES
                MOVE WS-SEARCH-CITY TO SQLX-SQL
-               MOVE 67 TO SQLX-SQL-LENGTH
-               MOVE 1 TO SQLX-BIND-COUNT
+               MOVE 83 TO SQLX-SQL-LENGTH
+               MOVE 2 TO SQLX-BIND-COUNT
                MOVE 'T' TO SQLX-BIND-TYPE (1)
-               MOVE 10 TO SQLX-BIND-LENGTH (1)
-               MOVE SRCITYI TO SQLX-BIND-VALUE (1)
+               MOVE WS-CA-CITY TO WS-PATTERN
+               PERFORM BUILD-PATTERN THRU BUILD-PATTERN-EXIT
+               MOVE WS-I TO SQLX-BIND-LENGTH (1)
+               MOVE WS-PATTERN TO SQLX-BIND-VALUE (1)
+               PERFORM BIND-OFFSET THRU BIND-OFFSET-EXIT
                GO TO PREPARE-PEOPLE-EXIT.
            MOVE WS-SEARCH-ALL TO SQLX-SQL.
-           MOVE 56 TO SQLX-SQL-LENGTH.
+           MOVE 65 TO SQLX-SQL-LENGTH.
+           MOVE 1 TO SQLX-BIND-COUNT.
+           MOVE 'I' TO SQLX-BIND-TYPE (1).
+           MOVE 5 TO SQLX-BIND-LENGTH (1).
+           MOVE WS-OFFSET-TEXT TO SQLX-BIND-VALUE (1).
        PREPARE-PEOPLE-EXIT.
+           EXIT.
+       BUILD-PATTERN.
+           MOVE 10 TO WS-I.
+       TRIM-PATTERN.
+           IF WS-PATTERN-CHAR (WS-I) NOT = SPACE
+               GO TO APPEND-WILDCARD.
+           SUBTRACT 1 FROM WS-I.
+           IF WS-I > 0 GO TO TRIM-PATTERN.
+       APPEND-WILDCARD.
+           ADD 1 TO WS-I.
+           MOVE '%' TO WS-PATTERN-CHAR (WS-I).
+       BUILD-PATTERN-EXIT.
+           EXIT.
+       BIND-OFFSET.
+           MOVE 'I' TO SQLX-BIND-TYPE (2).
+           MOVE 5 TO SQLX-BIND-LENGTH (2).
+           MOVE WS-OFFSET-TEXT TO SQLX-BIND-VALUE (2).
+       BIND-OFFSET-EXIT.
            EXIT.
        PREPARE-ORDERS.
            MOVE 'ORDER   PERSON              ITEM                QTY'
@@ -124,7 +212,7 @@
            EXIT.
        RETURN-TRANS.
            EXEC CICS RETURN TRANSID('SQLS') COMMAREA(WS-CA)
-               LENGTH(1) END-EXEC.
+               LENGTH(22) END-EXEC.
            STOP RUN.
        SEND-EMPTY.
            MOVE LOW-VALUES TO SQLKSRHO.
@@ -137,6 +225,8 @@
        SEND-EMPTY-EXIT.
            EXIT.
        SEND-CLEAR.
+           MOVE 0 TO WS-CA-OFFSET.
+           MOVE SPACES TO WS-CA-NAME WS-CA-CITY.
            MOVE LOW-VALUES TO SQLKSRHO.
            MOVE 'FIELDS AND RESULTS CLEARED' TO MSGO.
            EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
@@ -151,6 +241,8 @@
        SEND-ERROR-EXIT.
            EXIT.
        SEND-RESULT.
+           MOVE WS-CA-NAME TO SRNAMEO.
+           MOVE WS-CA-CITY TO SRCITYO.
            MOVE WS-RESULT-LINE (1) TO ROW01O.
            MOVE WS-RESULT-LINE (2) TO ROW02O.
            MOVE WS-RESULT-LINE (3) TO ROW03O.
@@ -162,7 +254,12 @@
            MOVE WS-RESULT-LINE (9) TO ROW09O.
            MOVE WS-RESULT-LINE (10) TO ROW10O.
            IF SQLX-RETURN-CODE = 0
-               MOVE 'STRUCTURED SQLITE QUERY COMPLETE' TO MSGO
+               IF EIBAID = AID-PF5
+                   MOVE 'ORDERS QUERY COMPLETE' TO MSGO
+               ELSE
+                   COMPUTE WS-PAGE = WS-CA-OFFSET / 10 + 1
+                   MOVE WS-PAGE TO WS-PAGE-OUT
+                   MOVE WS-PAGE-INFO TO MSGO
            ELSE
                MOVE SQLX-MESSAGE TO INFOO
                MOVE 'SQLITEX ERROR - SEE MESSAGE' TO MSGO.
