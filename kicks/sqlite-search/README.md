@@ -43,6 +43,8 @@ cities such as `ZAGREB`.
 | `BUILD.jcl` | Translates, compiles, and links `SQLKSRCH` with the API bridge |
 | `PCT.jcl` | Builds PCT suffix `SQ`, including transaction `SQLS` |
 | `PPT.jcl` | Builds PPT suffix `SQ`, including program and mapset entries |
+| `STARTUP.jcl` | Copies KICKS startup into the SQLite API TASKLIB |
+| `TEST.jcl` | Runs a batch CRLP terminal search through KICKS |
 | `SQLKICKS.clist` | Allocates SQLite/KICKS files and starts the application region |
 
 ## Build and install
@@ -75,6 +77,8 @@ zowe zos-jobs submit local-file kicks/sqlite-search/PCT.jcl \
   --zosmf-profile hercules --wait-for-output
 zowe zos-jobs submit local-file kicks/sqlite-search/PPT.jcl \
   --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/STARTUP.jcl \
+  --zosmf-profile hercules --wait-for-output
 ```
 
 Install the launcher:
@@ -84,9 +88,23 @@ zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKICKS.clist \
   'SYS2.CMDPROC(SQLKICKS)' --zosmf-profile hercules
 ```
 
-All four build jobs should end with `CC 0000`. The generated members are in
+All five build jobs should end with `CC 0000`. The generated members are in
 `IBMUSER.SQLITE.KLOAD`; the SQLite API itself remains in
 `IBMUSER.SQLITE.LOAD`.
+
+`STARTUP.jcl` is required for the COBOL bridge. The CLIST invokes the private
+`IBMUSER.SQLITE.LOAD(KIKSIP1$)` copy, which makes that library the MVS TASKLIB
+and lets the bridge's `LOAD EP=SQLITEA` find the API module. Merely placing
+`IBMUSER.SQLITE.LOAD` in the KICKS `SKIKLOAD` concatenation is not sufficient
+for an MVS LOAD issued by an application program.
+
+For a non-interactive runtime check, submit `TEST.jcl` and inspect its
+`CRLPOUT` spool file. It starts transaction `SQLS`, enters `P01` in the name
+field, and should display the matching `P01 | ZAGREB` row without a KICKS
+abend or `SQLITE API ERROR` message.
+
+Verified on MVS 3.8j/Turnkey5 as JOB01275: the KICKS step ended `CC 0000` and
+the CRLP screen displayed `1 | P01 | ZAGREB | 21` plus `SEARCH COMPLETE`.
 
 ## Run on TSO
 
