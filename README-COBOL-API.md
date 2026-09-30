@@ -105,6 +105,10 @@ SQLITE COBOL API TEST END
 Verified on MVS 3.8j/Turnkey5 as JOB01264: COBOL compile CC 0000 and execution
 CC 0000.
 
+For a command-level KICKS integration using this same calling contract, see
+[`kicks/sqlite-search/README.md`](kicks/sqlite-search/README.md). It includes a
+BMS search screen, transaction definitions, build JCL, and a TSO launcher.
+
 ## Required execution DD statements
 
 ```jcl

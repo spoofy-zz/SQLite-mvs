@@ -1,0 +1,147 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SQLKSRCH.
+       ENVIRONMENT DIVISION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  AID-KEYS.
+           05 AID-ENTER            PIC X VALUE X'7D'.
+           05 AID-PF3              PIC X VALUE X'F3'.
+           05 AID-PF4              PIC X VALUE X'F4'.
+       01  WS-RESP                 PIC S9(8) COMP VALUE +0.
+       01  WS-CA                   PIC X VALUE SPACE.
+       01  WS-NAME-SQL.
+           05 FILLER PIC X(53) VALUE
+              'SELECT ID,NAME,CITY,AGE FROM PEOPLE WHERE NAME=RTRIM('.
+           05 FILLER PIC X VALUE X'7D'.
+           05 WS-NAME-VALUE        PIC X(10).
+           05 FILLER PIC X VALUE X'7D'.
+           05 FILLER PIC X(14) VALUE ') ORDER BY ID;'.
+       01  WS-CITY-SQL.
+           05 FILLER PIC X(53) VALUE
+              'SELECT ID,NAME,CITY,AGE FROM PEOPLE WHERE CITY=RTRIM('.
+           05 FILLER PIC X VALUE X'7D'.
+           05 WS-CITY-VALUE        PIC X(10).
+           05 FILLER PIC X VALUE X'7D'.
+           05 FILLER PIC X(14) VALUE ') ORDER BY ID;'.
+       01  WS-SQL                  PIC X(79).
+       01  WS-SQL-LENGTH           PIC S9(4) COMP VALUE +79.
+       01  WS-OUTPUT.
+           05 WS-OUT-CHAR          PIC X OCCURS 2000 TIMES.
+       01  WS-OUTPUT-CAPACITY      PIC S9(4) COMP VALUE +2000.
+       01  WS-OUTPUT-LENGTH        PIC S9(4) COMP VALUE +0.
+       01  WS-API-RC               PIC S9(4) COMP VALUE +0.
+       01  WS-I                    PIC S9(4) COMP VALUE +0.
+       01  WS-LINE                 PIC S9(4) COMP VALUE +0.
+       01  WS-COL                  PIC S9(4) COMP VALUE +0.
+       01  WS-ROWS                 PIC S9(4) COMP VALUE +0.
+       01  WS-NL-NUM              PIC S9(4) COMP VALUE +21.
+       01  WS-NL-DEF REDEFINES WS-NL-NUM.
+           05 FILLER               PIC X.
+           05 WS-NL                PIC X.
+       01  WS-RESULT-LINES.
+           05 WS-RESULT-LINE OCCURS 10 TIMES.
+               10 WS-RESULT-CHAR   PIC X OCCURS 76 TIMES.
+           COPY SQLKMAP.
+       LINKAGE SECTION.
+       01  DFHCOMMAREA             PIC X.
+       PROCEDURE DIVISION.
+       MAIN.
+           IF EIBCALEN = 0
+               PERFORM SEND-EMPTY THRU SEND-EMPTY-EXIT
+               GO TO RETURN-TRANS.
+           IF EIBAID = AID-PF3
+               EXEC CICS SEND CONTROL ERASE FREEKB END-EXEC
+               EXEC CICS RETURN END-EXEC.
+           IF EIBAID = AID-PF4
+               PERFORM SEND-CLEAR THRU SEND-CLEAR-EXIT
+               GO TO RETURN-TRANS.
+           EXEC CICS RECEIVE MAP('SQLKSRH') MAPSET('SQLKMAP')
+               INTO(SQLKSRHI) RESP(WS-RESP) END-EXEC.
+           IF SRNAMEI NOT = LOW-VALUES AND SRNAMEI NOT = SPACES
+               MOVE SRNAMEI TO WS-NAME-VALUE
+               MOVE WS-NAME-SQL TO WS-SQL
+               GO TO EXECUTE-SQL.
+           IF SRCITYI NOT = LOW-VALUES AND SRCITYI NOT = SPACES
+               MOVE SRCITYI TO WS-CITY-VALUE
+               MOVE WS-CITY-SQL TO WS-SQL
+               GO TO EXECUTE-SQL.
+           PERFORM SEND-ERROR THRU SEND-ERROR-EXIT.
+           GO TO RETURN-TRANS.
+       EXECUTE-SQL.
+           MOVE SPACES TO WS-OUTPUT WS-RESULT-LINES.
+           MOVE +0 TO WS-OUTPUT-LENGTH WS-API-RC.
+           CALL 'SQLITEA' USING WS-SQL WS-SQL-LENGTH WS-OUTPUT
+               WS-OUTPUT-CAPACITY WS-OUTPUT-LENGTH WS-API-RC.
+           PERFORM FORMAT-OUTPUT THRU FORMAT-OUTPUT-EXIT.
+           PERFORM SEND-RESULT THRU SEND-RESULT-EXIT.
+       RETURN-TRANS.
+           EXEC CICS RETURN TRANSID('SQLS') COMMAREA(WS-CA)
+               LENGTH(1) END-EXEC.
+           STOP RUN.
+       FORMAT-OUTPUT.
+           MOVE +1 TO WS-I WS-COL.
+           IF WS-API-RC = 0
+               MOVE +0 TO WS-LINE
+           ELSE
+               MOVE +1 TO WS-LINE.
+       FORMAT-LOOP.
+           IF WS-I > WS-OUTPUT-LENGTH GO TO FORMAT-OUTPUT-EXIT.
+           IF WS-LINE > 10 GO TO FORMAT-OUTPUT-EXIT.
+           IF WS-OUT-CHAR (WS-I) = WS-NL
+               ADD +1 TO WS-LINE
+               MOVE +1 TO WS-COL
+               ADD +1 TO WS-I
+               GO TO FORMAT-LOOP.
+           IF WS-LINE = 0
+               ADD +1 TO WS-I
+               GO TO FORMAT-LOOP.
+           IF WS-COL < 77
+               MOVE WS-OUT-CHAR (WS-I) TO
+                    WS-RESULT-CHAR (WS-LINE, WS-COL)
+               ADD +1 TO WS-COL.
+           ADD +1 TO WS-I.
+           GO TO FORMAT-LOOP.
+       FORMAT-OUTPUT-EXIT.
+           EXIT.
+       SEND-EMPTY.
+           MOVE LOW-VALUES TO SQLKSRHO.
+           MOVE 'ENTER NAME OR CITY (EXACT VALUE)' TO INFOO.
+           MOVE 'READY' TO MSGO.
+           EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
+               FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
+       SEND-EMPTY-EXIT.
+           EXIT.
+       SEND-CLEAR.
+           MOVE LOW-VALUES TO SQLKSRHO.
+           MOVE 'SEARCH FIELDS CLEARED' TO MSGO.
+           EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
+               FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
+       SEND-CLEAR-EXIT.
+           EXIT.
+       SEND-ERROR.
+           MOVE LOW-VALUES TO SQLKSRHO.
+           MOVE 'ENTER NAME OR CITY' TO MSGO.
+           EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
+               FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
+       SEND-ERROR-EXIT.
+           EXIT.
+       SEND-RESULT.
+           MOVE LOW-VALUES TO SQLKSRHO.
+           MOVE WS-RESULT-LINE (1) TO ROW01O.
+           MOVE WS-RESULT-LINE (2) TO ROW02O.
+           MOVE WS-RESULT-LINE (3) TO ROW03O.
+           MOVE WS-RESULT-LINE (4) TO ROW04O.
+           MOVE WS-RESULT-LINE (5) TO ROW05O.
+           MOVE WS-RESULT-LINE (6) TO ROW06O.
+           MOVE WS-RESULT-LINE (7) TO ROW07O.
+           MOVE WS-RESULT-LINE (8) TO ROW08O.
+           MOVE WS-RESULT-LINE (9) TO ROW09O.
+           MOVE WS-RESULT-LINE (10) TO ROW10O.
+           IF WS-API-RC = 0
+               MOVE 'SEARCH COMPLETE' TO MSGO
+           ELSE
+               MOVE 'SQLITE API ERROR - SEE RESULT' TO MSGO.
+           EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
+               FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
+       SEND-RESULT-EXIT.
+           EXIT.

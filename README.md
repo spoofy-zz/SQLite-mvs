@@ -109,6 +109,8 @@ See `README-CREATE-DATABASE.md` for creating another empty RRDS database and a
 dedicated TSO launcher.
 See `README-COBOL-API.md` for the verified OS/VS COBOL `CALL 'SQLITEA'`
 interface, copybook, bridge installation, and example job.
+See `kicks/sqlite-search/README.md` for the BMS/COBOL KICKS example that
+searches the sample `people` table by name or city using transaction `SQLS`.
 
 ## MBT
 
