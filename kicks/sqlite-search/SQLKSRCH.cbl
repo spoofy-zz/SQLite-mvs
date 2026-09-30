@@ -6,6 +6,7 @@
        01  AID-PF3                 PIC X VALUE X'F3'.
        01  AID-PF4                 PIC X VALUE X'F4'.
        01  AID-PF5                 PIC X VALUE X'F5'.
+       01  AID-PF6                 PIC X VALUE X'F6'.
        01  AID-PF7                 PIC X VALUE X'F7'.
        01  AID-PF8                 PIC X VALUE X'F8'.
        01  WS-RESP                 PIC S9(8) COMP VALUE +0.
@@ -77,6 +78,10 @@
                GO TO RETURN-TRANS.
            EXEC CICS RECEIVE MAP('SQLKSRH') MAPSET('SQLKMAP')
                INTO(SQLKSRHI) RESP(WS-RESP) END-EXEC.
+           IF EIBAID = AID-PF6
+               IF SRIDI NOT = LOW-VALUES AND SRIDI NOT = SPACES
+                   EXEC CICS XCTL PROGRAM('SQLKDETL')
+                       COMMAREA(SRIDI) LENGTH(5) END-EXEC.
            MOVE SPACES TO SQLX-REQUEST WS-RESULT-LINES.
            MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
            MOVE 'EXECUTE' TO SQLX-OPERATION.

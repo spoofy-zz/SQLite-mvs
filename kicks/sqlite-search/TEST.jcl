@@ -27,4 +27,5 @@ SQLS<ENTER>
 <PF4>
 1<PF5>
 <PF4>
+1<PF6>
 /*
