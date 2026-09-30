@@ -201,6 +201,53 @@ static int runSuite(sqlite3 *db)
     return rc;
 }
 
+static int runSeedTestdb(sqlite3 *db)
+{
+    static const char *cities[] = {
+        "ZAGREB", "SPLIT", "RIJEKA", "OSIJEK", "PULA"
+    };
+    static const char *items[] = { "BOOK", "PEN", "MUG" };
+    char sql[256];
+    int person;
+    int item;
+    int rc;
+    rc = suiteSql(db, "testdb-schema",
+        "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; "
+        "PRAGMA foreign_keys=ON; DROP TABLE IF EXISTS \"order\"; "
+        "DROP TABLE IF EXISTS people; "
+        "CREATE TABLE people(id INTEGER PRIMARY KEY,name TEXT NOT NULL,"
+        "city TEXT,age INTEGER,email TEXT UNIQUE); "
+        "CREATE TABLE \"order\"(id INTEGER PRIMARY KEY,people_id INTEGER "
+        "NOT NULL,item TEXT NOT NULL,quantity INTEGER NOT NULL,amount INTEGER "
+        "NOT NULL,FOREIGN KEY(people_id) REFERENCES people(id)); "
+        "CREATE INDEX order_people ON \"order\"(people_id); BEGIN;");
+    for (person = 1; rc == SQLITE_OK && person <= 20; person++) {
+        snprintf(sql, sizeof(sql),
+            "INSERT INTO people VALUES(%d,'P%02d','%s',%d,'P%02d@EXAMPLE');",
+            person, person, cities[(person - 1) % 5], person + 20, person);
+        rc = sqlite3_exec(db, sql, 0, 0, 0);
+        for (item = 0; rc == SQLITE_OK && item < 3; item++) {
+            snprintf(sql, sizeof(sql),
+                "INSERT INTO \"order\" VALUES(%d,%d,'%s',%d,%d);",
+                person * 100 + item + 1, person, items[item], item + 1,
+                person * 100 + (item + 1) * 25);
+            rc = sqlite3_exec(db, sql, 0, 0, 0);
+        }
+    }
+    if (rc == SQLITE_OK) rc = sqlite3_exec(db, "COMMIT;", 0, 0, 0);
+    else sqlite3_exec(db, "ROLLBACK;", 0, 0, 0);
+    printf("testdb seed rc=%d people=20 orders=60\n", rc);
+    if (rc == SQLITE_OK) rc = expectValue(db, "testdb-people",
+        "SELECT count(*) FROM people;", "20");
+    if (rc == SQLITE_OK) rc = expectValue(db, "testdb-orders",
+        "SELECT count(*) FROM \"order\";", "60");
+    if (rc == SQLITE_OK) rc = expectValue(db, "testdb-three-each",
+        "SELECT count(*) FROM (SELECT people_id FROM \"order\" GROUP BY "
+        "people_id HAVING count(*)=3);", "20");
+    printf("SQLITE TESTDB %s\n", rc == SQLITE_OK ? "CREATED" : "FAILED");
+    return rc;
+}
+
 int main(int argc, char **argv)
 {
     sqlite3 *db = 0;
@@ -227,6 +274,8 @@ int main(int argc, char **argv)
         rc = runCrashTest(db);
     else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "SUITE") == 0)
         rc = runSuite(db);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "SEED") == 0)
+        rc = runSeedTestdb(db);
     else {
     if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=DELETE;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=FULL;", 0);

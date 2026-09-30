@@ -103,6 +103,8 @@ See `README-TESTING-MVS.md` for interactive TSO use plus build, deployment,
 smoke, persistence, spool, and concurrent-locking test instructions.
 See `README-TSO.md` for the complete interactive command reference and TSO
 locking workflow.
+See `README-TESTDB.md` for the separate 20-person/60-order sample database and
+the `TESTDB` TSO command.
 
 ## MBT
 

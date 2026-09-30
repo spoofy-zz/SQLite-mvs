@@ -35,6 +35,9 @@ SQL statements may span multiple terminal inputs and execute when a complete
 statement ending in `;` has been entered. `.quit`, `.exit`, or PF3 returns to
 TSO READY. Clear discards the current incomplete statement.
 
+The separate sample database is opened with `TESTDB` rather than `SQLITE`.
+See `README-TESTDB.md` for its schema, seed job, and example joins.
+
 ## Shell commands
 
 ```text
