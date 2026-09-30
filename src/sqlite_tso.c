@@ -19,6 +19,7 @@
 
 extern int tsqtget(char *buf, int max) asm("TSQTGET");
 extern int tsqtput(char *buf, int len) asm("TSQTPUT");
+extern int tsqtclr(void) asm("TSQTCLR");
 
 typedef struct ShellState ShellState;
 typedef struct RowOutput RowOutput;
@@ -263,6 +264,7 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut(".echo on|off        Echo SQL before execution");
         tsoOut(".timeout MS         Wait for locks (0 disables)");
         tsoOut(".show               Show shell settings");
+        tsoOut(".clear              Clear screen and move cursor home");
         tsoOut(".version            Show SQLite version");
         tsoOut(".quit / .exit       Return to TSO READY");
         tsoOut("SQL statements must end with ;  PF3 exits");
@@ -356,6 +358,8 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut("echo                %s", shell->echo ? "on" : "off");
         tsoOut("timeout             %d ms", shell->timeout);
         tsoOut("nullvalue           %s", shell->nullValue);
+    } else if (equalIgnoreCase(line, ".clear")) {
+        if (tsqtclr() != 0) tsoOut("ERROR: cannot clear terminal screen");
     } else {
         tsoOut("Unknown command. Use .help");
     }
@@ -402,7 +406,8 @@ int main(void)
         if (length > 0 && raw[0] == TERM_PF3) break;
         if (length > 0 && raw[0] == TERM_CLEAR) {
             statement[0] = '\0';
-            tsoOut("Input cleared; PF3 or .quit exits");
+            if (tsqtclr() != 0)
+                tsoOut("ERROR: cannot clear terminal screen");
             continue;
         }
         if (length > 0 && raw[0] == TERM_ENTER) {

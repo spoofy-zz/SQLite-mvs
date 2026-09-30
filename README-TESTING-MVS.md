@@ -73,7 +73,8 @@ include `.help`, `.tables`, `.schema [table]`, `.databases`, `.version`,
 `.headers on|off`, `.mode column|list`, `.quit`, and `.exit`. Column mode is
 the default and underlines its headers; list mode preserves full values and
 separates fields with ` | `. PF3 is an immediate exit key; Clear discards a
-partially entered SQL statement.
+partially entered SQL statement and clears the display. `.clear` performs the
+same screen reset from the command line.
 
 To invoke the load module without installing the CLIST, use these commands
 from TSO READY:

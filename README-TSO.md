@@ -50,6 +50,7 @@ Command             Description
 .echo on|off        Echo SQL before execution
 .timeout MS         Wait for database locks
 .show               Show shell settings
+.clear              Clear screen and move cursor home
 .version            Show SQLite version
 .quit / .exit       Return to TSO READY
 ```
@@ -72,6 +73,11 @@ Example configuration:
 `.timeout` uses milliseconds. Zero restores immediate `SQLITE_BUSY`. The MVS
 VFS sleeps with `STIMER WAIT` between retries, so a waiting TSO session does
 not consume CPU in a spin loop.
+
+`.clear` erases the complete 3270 display, returns from full-screen mode, and
+places the next `sqlite>` prompt at row 1 with the cursor at the top of the
+screen. The physical Clear key performs the same operation and also discards
+an incomplete SQL statement.
 
 ## Locking and concurrent use
 
