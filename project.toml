@@ -53,6 +53,17 @@ sources = [
   "src/sqlite_cobol_api.c",
 ]
 
+[[module]]
+name = "SQLITEX"
+entry = "@@CRT0"
+startup = "crt1"
+sources = [
+  "vendor/sqlite/sqlite3.c",
+  "src/sqlite3_mvs.c",
+  "src/sqlite_cobol_x_start.c",
+  "src/sqlite_cobol_x_api.c",
+]
+
 [deploy]
 target = "IBMUSER.SQLITE.LOAD"
 

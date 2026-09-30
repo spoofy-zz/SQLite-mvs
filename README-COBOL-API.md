@@ -62,10 +62,11 @@ Build the API load module and bridge:
 make cobol-api cobol-bridge
 ```
 
-Normal MBT deployment now installs three members in
-`IBMUSER.SQLITE.LOAD`: `SQLTTEST`, `SQLITSO`, and `SQLITEA`.
+Normal MBT deployment now installs four members in
+`IBMUSER.SQLITE.LOAD`: `SQLTTEST`, `SQLITSO`, `SQLITEA`, and `SQLITEX`.
 
-The bridge must be a sequential FB80 object dataset. Create and upload it:
+The bridge must be a sequential FB80 object dataset. The combined bridge
+exports both `SQLITEA` and `SQLITEX`. Create and upload it:
 
 ```sh
 zowe zos-jobs submit local-file jcl/cobol-api-setup.jcl \

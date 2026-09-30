@@ -2,7 +2,8 @@
 
 This sample is a small KICKS application that calls the SQLite MVS COBOL API.
 It searches the `people` table in `IBMUSER.SQLITE.TESTDB` by exact name or
-city and displays the result on a BMS screen.
+city, lists the first ten people when filters are blank, and displays a
+person's orders by ID. It now uses typed `SQLITEX` binds and result cells.
 
 The application follows the same layout as the KICKS `fuel` and `store`
 samples: a BMS map, an OS/VS COBOL command-level program, separate PCT/PPT
@@ -24,13 +25,19 @@ Start transaction `SQLS`. Enter either a name or a city:
  ENTER=SEARCH  PF4=CLEAR  PF3=EXIT
 ```
 
-- `ENTER` searches. If both fields are filled, name takes precedence.
+- `ENTER` searches people. If both fields are filled, name takes precedence.
+- `PF5` lists orders for the ID field.
 - `PF4` clears both fields and the result area.
 - `PF3` leaves the transaction and returns to KICKS.
 
 The search is exact after trimming the ten-character input field. Useful
 values from the supplied test database include names `P01` through `P20` and
 cities such as `ZAGREB`.
+
+The screen does not concatenate BMS input into SQL. Name, city, and ID values
+are passed through `sqlite3_bind_text`/`sqlite3_bind_int64` by `SQLITEX`.
+People and orders paths were verified in KICKS CRLP as JOB01301 (`CC 0000`):
+PF5 for person 1 displayed orders 101/BOOK, 102/PEN, and 103/MUG.
 
 ## Files
 

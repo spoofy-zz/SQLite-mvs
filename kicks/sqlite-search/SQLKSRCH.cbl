@@ -3,44 +3,41 @@
        ENVIRONMENT DIVISION.
        DATA DIVISION.
        WORKING-STORAGE SECTION.
-       01  AID-KEYS.
-           05 AID-ENTER            PIC X VALUE X'7D'.
-           05 AID-PF3              PIC X VALUE X'F3'.
-           05 AID-PF4              PIC X VALUE X'F4'.
+       01  AID-PF3                 PIC X VALUE X'F3'.
+       01  AID-PF4                 PIC X VALUE X'F4'.
+       01  AID-PF5                 PIC X VALUE X'F5'.
        01  WS-RESP                 PIC S9(8) COMP VALUE +0.
        01  WS-CA                   PIC X VALUE SPACE.
-       01  WS-NAME-SQL.
+       01  WS-SEARCH-NAME.
+           05 FILLER PIC X(36) VALUE
+              'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
+           05 FILLER PIC X(24) VALUE 'WHERE NAME=? ORDER BY ID'.
+       01  WS-SEARCH-CITY.
+           05 FILLER PIC X(36) VALUE
+              'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
+           05 FILLER PIC X(24) VALUE 'WHERE CITY=? ORDER BY ID'.
+       01  WS-SEARCH-ALL.
+           05 FILLER PIC X(36) VALUE
+              'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
+           05 FILLER PIC X(20) VALUE 'ORDER BY ID LIMIT 10'.
+       01  WS-ORDERS.
            05 FILLER PIC X(53) VALUE
-              'SELECT ID,NAME,CITY,AGE FROM PEOPLE WHERE NAME=RTRIM('.
-           05 FILLER PIC X VALUE X'7D'.
-           05 WS-NAME-VALUE        PIC X(10).
-           05 FILLER PIC X VALUE X'7D'.
-           05 FILLER PIC X(14) VALUE ') ORDER BY ID;'.
-       01  WS-CITY-SQL.
-           05 FILLER PIC X(53) VALUE
-              'SELECT ID,NAME,CITY,AGE FROM PEOPLE WHERE CITY=RTRIM('.
-           05 FILLER PIC X VALUE X'7D'.
-           05 WS-CITY-VALUE        PIC X(10).
-           05 FILLER PIC X VALUE X'7D'.
-           05 FILLER PIC X(14) VALUE ') ORDER BY ID;'.
-       01  WS-SQL                  PIC X(79).
-       01  WS-SQL-LENGTH           PIC S9(4) COMP VALUE +79.
-       01  WS-OUTPUT.
-           05 WS-OUT-CHAR          PIC X OCCURS 2000 TIMES.
-       01  WS-OUTPUT-CAPACITY      PIC S9(4) COMP VALUE +2000.
-       01  WS-OUTPUT-LENGTH        PIC S9(4) COMP VALUE +0.
-       01  WS-API-RC               PIC S9(4) COMP VALUE +0.
+              'SELECT ID,PEOPLE_ID,ITEM,QUANTITY,AMOUNT FROM ORDERS '.
+           05 FILLER PIC X(29) VALUE
+              'WHERE PEOPLE_ID=? ORDER BY ID'.
        01  WS-I                    PIC S9(4) COMP VALUE +0.
-       01  WS-LINE                 PIC S9(4) COMP VALUE +0.
-       01  WS-COL                  PIC S9(4) COMP VALUE +0.
-       01  WS-ROWS                 PIC S9(4) COMP VALUE +0.
-       01  WS-NL-NUM              PIC S9(4) COMP VALUE +21.
-       01  WS-NL-DEF REDEFINES WS-NL-NUM.
-           05 FILLER               PIC X.
-           05 WS-NL                PIC X.
        01  WS-RESULT-LINES.
            05 WS-RESULT-LINE OCCURS 10 TIMES.
-               10 WS-RESULT-CHAR   PIC X OCCURS 76 TIMES.
+              10 WS-R-ID           PIC X(8).
+              10 FILLER            PIC X.
+              10 WS-R-COL2         PIC X(18).
+              10 FILLER            PIC X.
+              10 WS-R-COL3         PIC X(18).
+              10 FILLER            PIC X.
+              10 WS-R-COL4         PIC X(12).
+              10 FILLER            PIC X.
+              10 WS-R-COL5         PIC X(15).
+           COPY SQLITEX.
            COPY SQLKMAP.
        LINKAGE SECTION.
        01  DFHCOMMAREA             PIC X.
@@ -57,55 +54,81 @@
                GO TO RETURN-TRANS.
            EXEC CICS RECEIVE MAP('SQLKSRH') MAPSET('SQLKMAP')
                INTO(SQLKSRHI) RESP(WS-RESP) END-EXEC.
-           IF SRNAMEI NOT = LOW-VALUES AND SRNAMEI NOT = SPACES
-               MOVE SRNAMEI TO WS-NAME-VALUE
-               MOVE WS-NAME-SQL TO WS-SQL
-               GO TO EXECUTE-SQL.
-           IF SRCITYI NOT = LOW-VALUES AND SRCITYI NOT = SPACES
-               MOVE SRCITYI TO WS-CITY-VALUE
-               MOVE WS-CITY-SQL TO WS-SQL
-               GO TO EXECUTE-SQL.
-           PERFORM SEND-ERROR THRU SEND-ERROR-EXIT.
-           GO TO RETURN-TRANS.
-       EXECUTE-SQL.
-           MOVE SPACES TO WS-OUTPUT WS-RESULT-LINES.
-           MOVE +0 TO WS-OUTPUT-LENGTH WS-API-RC.
-           CALL 'SQLITEA' USING WS-SQL WS-SQL-LENGTH WS-OUTPUT
-               WS-OUTPUT-CAPACITY WS-OUTPUT-LENGTH WS-API-RC.
-           PERFORM FORMAT-OUTPUT THRU FORMAT-OUTPUT-EXIT.
+           MOVE SPACES TO SQLX-REQUEST WS-RESULT-LINES.
+           MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
+           MOVE 'EXECUTE' TO SQLX-OPERATION.
+           MOVE 10 TO SQLX-MAX-ROWS.
+           IF EIBAID = AID-PF5
+               PERFORM PREPARE-ORDERS THRU PREPARE-ORDERS-EXIT
+           ELSE
+               PERFORM PREPARE-PEOPLE THRU PREPARE-PEOPLE-EXIT.
+           IF SQLX-RETURN-CODE = -1
+               PERFORM SEND-ERROR THRU SEND-ERROR-EXIT
+               GO TO RETURN-TRANS.
+           CALL 'SQLITEX' USING SQLX-REQUEST.
+           PERFORM FORMAT-ROWS THRU FORMAT-ROWS-EXIT.
            PERFORM SEND-RESULT THRU SEND-RESULT-EXIT.
+           GO TO RETURN-TRANS.
+       PREPARE-PEOPLE.
+           MOVE 'ID      NAME                CITY                AGE'
+             TO HDRO.
+           IF SRNAMEI NOT = LOW-VALUES AND SRNAMEI NOT = SPACES
+               MOVE WS-SEARCH-NAME TO SQLX-SQL
+               MOVE 60 TO SQLX-SQL-LENGTH
+               MOVE 1 TO SQLX-BIND-COUNT
+               MOVE 'T' TO SQLX-BIND-TYPE (1)
+               MOVE 10 TO SQLX-BIND-LENGTH (1)
+               MOVE SRNAMEI TO SQLX-BIND-VALUE (1)
+               GO TO PREPARE-PEOPLE-EXIT.
+           IF SRCITYI NOT = LOW-VALUES AND SRCITYI NOT = SPACES
+               MOVE WS-SEARCH-CITY TO SQLX-SQL
+               MOVE 60 TO SQLX-SQL-LENGTH
+               MOVE 1 TO SQLX-BIND-COUNT
+               MOVE 'T' TO SQLX-BIND-TYPE (1)
+               MOVE 10 TO SQLX-BIND-LENGTH (1)
+               MOVE SRCITYI TO SQLX-BIND-VALUE (1)
+               GO TO PREPARE-PEOPLE-EXIT.
+           MOVE WS-SEARCH-ALL TO SQLX-SQL.
+           MOVE 56 TO SQLX-SQL-LENGTH.
+       PREPARE-PEOPLE-EXIT.
+           EXIT.
+       PREPARE-ORDERS.
+           MOVE 'ORDER   PERSON              ITEM                QTY'
+             TO HDRO.
+           IF SRIDI = LOW-VALUES OR SRIDI = SPACES
+               MOVE -1 TO SQLX-RETURN-CODE
+               GO TO PREPARE-ORDERS-EXIT.
+           MOVE WS-ORDERS TO SQLX-SQL.
+           MOVE 82 TO SQLX-SQL-LENGTH.
+           MOVE 1 TO SQLX-BIND-COUNT.
+           MOVE 'I' TO SQLX-BIND-TYPE (1).
+           MOVE 5 TO SQLX-BIND-LENGTH (1).
+           MOVE SRIDI TO SQLX-BIND-VALUE (1).
+       PREPARE-ORDERS-EXIT.
+           EXIT.
+       FORMAT-ROWS.
+           MOVE 1 TO WS-I.
+       FORMAT-LOOP.
+           IF WS-I > SQLX-ROW-COUNT GO TO FORMAT-ROWS-EXIT.
+           MOVE SQLX-CELL-VALUE (WS-I, 1) TO WS-R-ID (WS-I).
+           MOVE SQLX-CELL-VALUE (WS-I, 2) TO WS-R-COL2 (WS-I).
+           MOVE SQLX-CELL-VALUE (WS-I, 3) TO WS-R-COL3 (WS-I).
+           MOVE SQLX-CELL-VALUE (WS-I, 4) TO WS-R-COL4 (WS-I).
+           IF SQLX-COLUMN-COUNT > 4
+               MOVE SQLX-CELL-VALUE (WS-I, 5) TO WS-R-COL5 (WS-I).
+           ADD 1 TO WS-I.
+           GO TO FORMAT-LOOP.
+       FORMAT-ROWS-EXIT.
+           EXIT.
        RETURN-TRANS.
            EXEC CICS RETURN TRANSID('SQLS') COMMAREA(WS-CA)
                LENGTH(1) END-EXEC.
            STOP RUN.
-       FORMAT-OUTPUT.
-           MOVE +1 TO WS-I WS-COL.
-           IF WS-API-RC = 0
-               MOVE +0 TO WS-LINE
-           ELSE
-               MOVE +1 TO WS-LINE.
-       FORMAT-LOOP.
-           IF WS-I > WS-OUTPUT-LENGTH GO TO FORMAT-OUTPUT-EXIT.
-           IF WS-LINE > 10 GO TO FORMAT-OUTPUT-EXIT.
-           IF WS-OUT-CHAR (WS-I) = WS-NL
-               ADD +1 TO WS-LINE
-               MOVE +1 TO WS-COL
-               ADD +1 TO WS-I
-               GO TO FORMAT-LOOP.
-           IF WS-LINE = 0
-               ADD +1 TO WS-I
-               GO TO FORMAT-LOOP.
-           IF WS-COL < 77
-               MOVE WS-OUT-CHAR (WS-I) TO
-                    WS-RESULT-CHAR (WS-LINE, WS-COL)
-               ADD +1 TO WS-COL.
-           ADD +1 TO WS-I.
-           GO TO FORMAT-LOOP.
-       FORMAT-OUTPUT-EXIT.
-           EXIT.
        SEND-EMPTY.
            MOVE LOW-VALUES TO SQLKSRHO.
-           MOVE 'ENTER NAME OR CITY (EXACT VALUE)' TO INFOO.
+           MOVE 'ID      NAME                CITY                AGE'
+             TO HDRO.
+           MOVE 'ENTER FILTERS, OR BLANK FOR FIRST 10 PEOPLE' TO INFOO.
            MOVE 'READY' TO MSGO.
            EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
                FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
@@ -113,20 +136,19 @@
            EXIT.
        SEND-CLEAR.
            MOVE LOW-VALUES TO SQLKSRHO.
-           MOVE 'SEARCH FIELDS CLEARED' TO MSGO.
+           MOVE 'FIELDS AND RESULTS CLEARED' TO MSGO.
            EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
                FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
        SEND-CLEAR-EXIT.
            EXIT.
        SEND-ERROR.
            MOVE LOW-VALUES TO SQLKSRHO.
-           MOVE 'ENTER NAME OR CITY' TO MSGO.
+           MOVE 'ENTER PERSON ID BEFORE PF5' TO MSGO.
            EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
                FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
        SEND-ERROR-EXIT.
            EXIT.
        SEND-RESULT.
-           MOVE LOW-VALUES TO SQLKSRHO.
            MOVE WS-RESULT-LINE (1) TO ROW01O.
            MOVE WS-RESULT-LINE (2) TO ROW02O.
            MOVE WS-RESULT-LINE (3) TO ROW03O.
@@ -137,10 +159,11 @@
            MOVE WS-RESULT-LINE (8) TO ROW08O.
            MOVE WS-RESULT-LINE (9) TO ROW09O.
            MOVE WS-RESULT-LINE (10) TO ROW10O.
-           IF WS-API-RC = 0
-               MOVE 'SEARCH COMPLETE' TO MSGO
+           IF SQLX-RETURN-CODE = 0
+               MOVE 'STRUCTURED SQLITE QUERY COMPLETE' TO MSGO
            ELSE
-               MOVE 'SQLITE API ERROR - SEE RESULT' TO MSGO.
+               MOVE SQLX-MESSAGE TO INFOO
+               MOVE 'SQLITEX ERROR - SEE MESSAGE' TO MSGO.
            EXEC CICS SEND MAP('SQLKSRH') MAPSET('SQLKMAP')
                FROM(SQLKSRHO) ERASE FREEKB END-EXEC.
        SEND-RESULT-EXIT.

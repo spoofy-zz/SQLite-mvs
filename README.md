@@ -62,6 +62,11 @@ VFS. A two-job test confirmed that `jcl/lock-holder.jcl` can hold
 `BEGIN IMMEDIATE` while the class-B `jcl/lock-probe.jcl` receives the expected
 `SQLITE_BUSY` instead of writing concurrently.
 
+The VFS now accepts explicit `DBDD:JRNDD` names for independent RRDS pairs.
+This enables SQLite `ATTACH`, online backup/restore through `SQLBAK:SQLBJR`,
+and database-specific SYSTEM ENQ resources while preserving the legacy
+`SQLDB` to `SQLJRN` mapping.
+
 Rollback journals are stored in a second RRDS allocated as DD `SQLJRN`.
 RRN 1 contains VFS metadata and journal byte ranges start at RRN 2. The MVS
 test runs with `journal_mode=DELETE` and `synchronous=FULL`; both committed
@@ -109,6 +114,8 @@ See `README-CREATE-DATABASE.md` for creating another empty RRDS database and a
 dedicated TSO launcher.
 See `README-COBOL-API.md` for the verified OS/VS COBOL `CALL 'SQLITEA'`
 interface, copybook, bridge installation, and example job.
+See `README-COBOL-STRUCTURED.md` for the typed, parameterized `SQLITEX`
+request/row API used by the KICKS people/orders screen.
 See `kicks/sqlite-search/README.md` for the BMS/COBOL KICKS example that
 searches the sample `people` table by name or city using transaction `SQLS`.
 

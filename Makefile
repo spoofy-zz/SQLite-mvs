@@ -29,7 +29,7 @@ SQLITE_MVS_CPPFLAGS := \
 	-DSQLITE_MAX_MMAP_SIZE=0 \
 	-DSQLITE_OMIT_AUTOINIT=1
 
-.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-bridge names sdk as370-large clean mbt-build
+.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge names sdk as370-large clean mbt-build
 
 sdk:
 	$(MAKE) -C toolchain/cc370 PREFIX=$(SDK_ROOT) install
@@ -117,6 +117,19 @@ cobol-api: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
 		$^ -lc -iebcopy -o $(BUILDDIR)/SQLITEA
 
+$(BUILDDIR)/sqlite_cobol_x_start.o: src/sqlite_cobol_x_start.c include/sqlite_cobol_x.h
+	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+
+$(BUILDDIR)/sqlite_cobol_x_api.o: src/sqlite_cobol_x_api.c include/sqlite_cobol_x.h
+	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+
+cobol-api-x: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
+		$(BUILDDIR)/sqlite_cobol_x_start.o $(BUILDDIR)/sqlite_cobol_x_api.o
+	$(LD370) -L$(shell dirname $$(command -v $(CC370)))/../cc370/lib \
+		--name SQLITEX -e @@CRT0 \
+		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
+		$^ -lc -iebcopy -o $(BUILDDIR)/SQLITEX
+
 $(BUILDDIR)/sqliteabr.o: asm/sqliteabr.asm
 	@mkdir -p $(BUILDDIR)
 	$(AS370) -o $@ $<
@@ -134,5 +147,7 @@ clean:
 		$(BUILDDIR)/sqlite_tso.o $(BUILDDIR)/tsqtget.o $(BUILDDIR)/tsqtput.o \
 		$(BUILDDIR)/SQLITSO \
 		$(BUILDDIR)/sqlite_cobol_start.o $(BUILDDIR)/sqlite_cobol_api.o \
+		$(BUILDDIR)/sqlite_cobol_x_start.o $(BUILDDIR)/sqlite_cobol_x_api.o \
+		$(BUILDDIR)/SQLITEX \
 		$(BUILDDIR)/sqliteabr.o $(BUILDDIR)/SQLITEA \
 		$(BUILDDIR)/cc370.log $(BUILDDIR)/as370.log

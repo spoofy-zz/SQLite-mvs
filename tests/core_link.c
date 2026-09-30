@@ -5,6 +5,9 @@
 #include "sqlite3_mvs_names.h"
 #include "sqlite3.h"
 
+static int expectValue(sqlite3 *db, const char *label, const char *sql,
+                       const char *value);
+
 static int printRow(void *unused, int columns, char **values, char **names)
 {
     int i;
@@ -72,6 +75,52 @@ static int runWaitTest(sqlite3 *db)
            error ? error : "");
     if (error) sqlite3_free(error);
     if (rc == SQLITE_OK) printf("lock-wait acquired after holder release\n");
+    return rc;
+}
+
+static int copyDatabase(sqlite3 *destination, sqlite3 *source)
+{
+    sqlite3_backup *copy = sqlite3_backup_init(destination, "main",
+                                                source, "main");
+    int rc;
+    if (!copy) return sqlite3_errcode(destination);
+    rc = sqlite3_backup_step(copy, -1);
+    if (rc == SQLITE_DONE) rc = SQLITE_OK;
+    if (sqlite3_backup_finish(copy) != SQLITE_OK && rc == SQLITE_OK)
+        rc = sqlite3_errcode(destination);
+    return rc;
+}
+
+static int runBackupTest(sqlite3 *db)
+{
+    sqlite3 *backup = 0;
+    int rc = sqlite3_open_v2("SQLBAK:SQLBJR", &backup,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "mvs-rrds");
+    printf("backup open rc=%d\n", rc);
+    if (rc == SQLITE_OK) rc = copyDatabase(backup, db);
+    printf("backup copy rc=%d\n", rc);
+    if (rc == SQLITE_OK) rc = expectValue(backup, "backup-integrity",
+        "PRAGMA integrity_check;", "ok");
+    if (rc == SQLITE_OK) rc = runSql(db, "backup-marker",
+        "INSERT INTO smoke(value) VALUES('BACKUP RESTORE MARKER');", 0);
+    if (rc == SQLITE_OK) rc = copyDatabase(db, backup);
+    printf("restore copy rc=%d\n", rc);
+    if (rc == SQLITE_OK) rc = expectValue(db, "restore-marker",
+        "SELECT count(*) FROM smoke WHERE value='BACKUP RESTORE MARKER';",
+        "0");
+    if (backup) {
+        sqlite3_close(backup);
+        backup = 0;
+    }
+    if (rc == SQLITE_OK) rc = runSql(db, "attach-backup",
+        "ATTACH DATABASE 'SQLBAK:SQLBJR' AS backup;", 0);
+    if (rc == SQLITE_OK) rc = expectValue(db, "attach-schema",
+        "SELECT (SELECT count(*) FROM backup.sqlite_master)="
+        "(SELECT count(*) FROM main.sqlite_master);", "1");
+    if (rc == SQLITE_OK) rc = runSql(db, "detach-backup",
+        "DETACH DATABASE backup;", 0);
+    if (backup) sqlite3_close(backup);
+    printf("SQLITE BACKUP TEST %s\n", rc == SQLITE_OK ? "PASSED" : "FAILED");
     return rc;
 }
 
@@ -281,6 +330,8 @@ int main(int argc, char **argv)
         rc = runSuite(db);
     else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "SEED") == 0)
         rc = runSeedTestdb(db);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "BACKUP") == 0)
+        rc = runBackupTest(db);
     else {
     if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=DELETE;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=FULL;", 0);

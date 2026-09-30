@@ -477,6 +477,42 @@ static int dumpDatabase(sqlite3 *db, const char *onlyTable)
     return rc;
 }
 
+static int backupDatabase(sqlite3 *mainDb, int restore)
+{
+    sqlite3 *backupDb = 0;
+    sqlite3 *destination;
+    sqlite3 *source;
+    sqlite3_backup *copy;
+    int rc;
+    rc = sqlite3_open_v2("SQLBAK:SQLBJR", &backupDb,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "mvs-rrds");
+    if (rc != SQLITE_OK) {
+        tsoOut("ERROR %d: cannot open SQLBAK:SQLBJR (%s)", rc,
+               backupDb ? sqlite3_errmsg(backupDb) : "open failed");
+        if (backupDb) sqlite3_close(backupDb);
+        return rc;
+    }
+    destination = restore ? mainDb : backupDb;
+    source = restore ? backupDb : mainDb;
+    copy = sqlite3_backup_init(destination, "main", source, "main");
+    if (!copy) {
+        rc = sqlite3_errcode(destination);
+    } else {
+        rc = sqlite3_backup_step(copy, -1);
+        if (rc == SQLITE_DONE) rc = SQLITE_OK;
+        if (sqlite3_backup_finish(copy) != SQLITE_OK && rc == SQLITE_OK)
+            rc = sqlite3_errcode(destination);
+    }
+    if (rc == SQLITE_OK)
+        tsoOut("%s complete", restore ? "Restore" : "Backup");
+    else
+        tsoOut("ERROR %d during %s: %s", rc,
+               restore ? "restore" : "backup",
+               sqlite3_errmsg(destination));
+    sqlite3_close(backupDb);
+    return rc;
+}
+
 static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
 {
     if (equalIgnoreCase(line, ".quit") || equalIgnoreCase(line, ".exit"))
@@ -512,6 +548,8 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut(".output DDNAME      Redirect output (.output terminal)");
         tsoOut(".once DDNAME        Redirect the next SQL result");
         tsoOut(".dump [table]       Write database as SQL text");
+        tsoOut(".backup             Copy main database to SQLBAK/SQLBJR");
+        tsoOut(".restore            Replace main database from SQLBAK");
         tsoOut(".clear              Clear screen and move cursor home");
         tsoOut(".version            Show SQLite version");
         tsoOut(".quit / .exit       Return to TSO READY");
@@ -750,6 +788,16 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
             tsoOut("ERROR %d while creating dump: %s", rc,
                    sqlite3_errmsg(db));
         if (shellOutputOnce) closeShellOutput();
+    } else if (equalIgnoreCase(line, ".backup")) {
+        if (sqlite3_get_autocommit(db) == 0)
+            tsoOut("ERROR: .backup cannot run inside a transaction");
+        else
+            backupDatabase(db, 0);
+    } else if (equalIgnoreCase(line, ".restore")) {
+        if (sqlite3_get_autocommit(db) == 0)
+            tsoOut("ERROR: .restore cannot run inside a transaction");
+        else
+            backupDatabase(db, 1);
     } else if (startsIgnoreCase(line, ".output") ||
                startsIgnoreCase(line, ".once")) {
         int once = startsIgnoreCase(line, ".once");

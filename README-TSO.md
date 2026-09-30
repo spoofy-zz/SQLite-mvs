@@ -71,6 +71,8 @@ Command             Description
 .output DDNAME      Redirect output (`.output terminal` restores TSO)
 .once DDNAME        Redirect only the next SQL result
 .dump [table]       Export the database or one table as SQL
+.backup             Online copy to SQLBAK/SQLBJR
+.restore            Replace main from SQLBAK/SQLBJR
 .clear              Clear screen and move cursor home
 .version            Show SQLite version
 .quit / .exit       Return to TSO READY
@@ -180,8 +182,47 @@ a second temporary database, while the current MVS VFS has only one main RRDS
 DD pair (`SQLDB`/`SQLJRN`). Aliasing that temporary file to `SQLDB` could
 damage the source database. Databases created by this project use
 `auto_vacuum=FULL`, so committed deletes already reclaim trailing RRDS pages.
-The safe next step is a second-DD VFS mapping used by backup, restore, and
-VACUUM.
+The second-DD mapping now supports backup, restore, and ATTACH. A remaining
+VFS change must route SQLite's internally generated VACUUM filename to that
+pair before `.vacuum` can safely be enabled.
+
+## RRDS backup, restore, and attached databases
+
+Submit `jcl/define-backup-rrds.jcl` once, install
+`clist/SQLITADM.clist` as `SYS2.CMDPROC(SQLITADM)`, and start the administrative
+shell with `SQLITADM`. It allocates:
+
+```text
+SQLBAK -> IBMUSER.SQLITE.BACKUP
+SQLBJR -> IBMUSER.SQLITE.BACKJRN
+```
+
+Then use:
+
+```text
+.backup
+.integrity_check
+.restore
+```
+
+`.backup` and `.restore` use SQLite's online backup API, not a raw VSAM copy.
+They are rejected inside an open transaction. The MVS VFS accepts an explicit
+database/journal DD pair separated by a colon, which also enables ATTACH:
+
+```sql
+ATTACH DATABASE 'AUXDB:AUXJRN' AS aux;
+SELECT * FROM aux.some_table;
+DETACH DATABASE aux;
+```
+
+Both DD names must already be allocated to compatible 4096-byte RRDS
+clusters. Each database DD gets independent `DBDD.READ`, `DBDD.WRITE`, and
+`DBDD.PENDING` SYSTEM-scope ENQ resources. The legacy filename `SQLDB` still
+maps to `SQLDB/SQLJRN`, so existing programs remain compatible.
+
+Backup, restore, and ATTACH were verified by JOB01306: backup integrity
+returned `ok`, restore removed a live-only marker, the backup attached as a
+second schema, and its schema matched the restored main database.
 
 `.timeout` uses milliseconds. Zero restores immediate `SQLITE_BUSY`. The MVS
 VFS sleeps with `STIMER WAIT` between retries, so a waiting TSO session does

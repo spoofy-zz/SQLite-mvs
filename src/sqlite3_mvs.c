@@ -1,5 +1,6 @@
 /* SQLite VFS for MVS 3.8j backed by a fixed-record VSAM RRDS. */
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -16,9 +17,6 @@ extern int usleep(unsigned usec);
 #define MVS_JOURNAL_DDNAME "SQLJRN"
 #define MVS_JOURNAL_MAGIC "MVSJRN01"
 #define MVS_LOCK_QNAME "SQLITE"
-#define MVS_LOCK_READ "SQLDB.READ"
-#define MVS_LOCK_WRITE "SQLDB.WRITE"
-#define MVS_LOCK_PENDING "SQLDB.PENDING"
 
 typedef struct MvsFile MvsFile;
 struct MvsFile {
@@ -26,10 +24,64 @@ struct MvsFile {
     VSFILE *vs;
     sqlite3_int64 size;
     int lock;
-    const char *ddname;
+    char ddname[9];
+    char lockRead[18];
+    char lockWrite[18];
+    char lockPending[18];
     unsigned dataRrn;
     int journal;
 };
+
+static int mvsValidDd(const char *name, int length)
+{
+    int i;
+    if (length < 1 || length > 8) return 0;
+    for (i = 0; i < length; i++) {
+        unsigned char c = (unsigned char)name[i];
+        if (!((c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+              c == '@' || c == '#' || c == '$')) return 0;
+    }
+    return 1;
+}
+
+static int mvsNames(const char *name, int journal, char *database,
+                    char *journalName)
+{
+    const char *colon;
+    int dbLength;
+    int journalLength;
+    char base[32];
+    int length;
+    if (!name) name = MVS_DDNAME;
+    length = (int)strlen(name);
+    if (length >= (int)sizeof(base)) return 0;
+    strcpy(base, name);
+    if (length > 8 && strcmp(base + length - 8, "-journal") == 0)
+        base[length - 8] = '\0';
+    colon = strchr(base, ':');
+    dbLength = colon ? (int)(colon - base) : (int)strlen(base);
+    if (!mvsValidDd(base, dbLength)) return 0;
+    memcpy(database, base, dbLength);
+    database[dbLength] = '\0';
+    if (colon) {
+        journalLength = (int)strlen(colon + 1);
+        if (!mvsValidDd(colon + 1, journalLength)) return 0;
+        memcpy(journalName, colon + 1, journalLength + 1);
+    } else if (strcmp(database, MVS_DDNAME) == 0) {
+        strcpy(journalName, MVS_JOURNAL_DDNAME);
+    } else {
+        return journal ? 0 : 1;
+    }
+    return 1;
+}
+
+static void mvsLockNames(MvsFile *file, const char *database)
+{
+    snprintf(file->lockRead, sizeof(file->lockRead), "%s.READ", database);
+    snprintf(file->lockWrite, sizeof(file->lockWrite), "%s.WRITE", database);
+    snprintf(file->lockPending, sizeof(file->lockPending), "%s.PENDING",
+             database);
+}
 
 static int mvsClose(sqlite3_file *file);
 static int mvsRead(sqlite3_file *file, void *buf, int amount, sqlite3_int64 offset);
@@ -239,30 +291,30 @@ static int mvsLock(sqlite3_file *base, int target)
     if (target <= file->lock) return SQLITE_OK;
 
     if (file->lock == SQLITE_LOCK_NONE) {
-        rc = mvsEnq(MVS_LOCK_PENDING, ENQ_USE | ENQ_SHR);
+        rc = mvsEnq(file->lockPending, ENQ_USE | ENQ_SHR);
         if (rc != 0) return SQLITE_BUSY;
-        rc = mvsEnq(MVS_LOCK_READ, ENQ_USE | ENQ_SHR);
-        mvsDeq(MVS_LOCK_PENDING);
+        rc = mvsEnq(file->lockRead, ENQ_USE | ENQ_SHR);
+        mvsDeq(file->lockPending);
         if (rc != 0) return SQLITE_BUSY;
         file->lock = SQLITE_LOCK_SHARED;
     }
     if (target == SQLITE_LOCK_SHARED) return SQLITE_OK;
 
     if (file->lock == SQLITE_LOCK_SHARED) {
-        rc = mvsEnq(MVS_LOCK_WRITE, ENQ_USE | ENQ_EXC);
+        rc = mvsEnq(file->lockWrite, ENQ_USE | ENQ_EXC);
         if (rc != 0) return SQLITE_BUSY;
         file->lock = SQLITE_LOCK_RESERVED;
     }
     if (target == SQLITE_LOCK_RESERVED) return SQLITE_OK;
 
     if (file->lock == SQLITE_LOCK_RESERVED) {
-        rc = mvsEnq(MVS_LOCK_PENDING, ENQ_USE | ENQ_EXC);
+        rc = mvsEnq(file->lockPending, ENQ_USE | ENQ_EXC);
         if (rc != 0) return SQLITE_BUSY;
         file->lock = SQLITE_LOCK_PENDING;
     }
     if (target == SQLITE_LOCK_PENDING) return SQLITE_OK;
 
-    rc = mvsEnq(MVS_LOCK_READ, ENQ_CHNG | ENQ_EXC);
+    rc = mvsEnq(file->lockRead, ENQ_CHNG | ENQ_EXC);
     if (rc != 0) return SQLITE_BUSY;
     file->lock = SQLITE_LOCK_EXCLUSIVE;
     return SQLITE_OK;
@@ -276,23 +328,23 @@ static int mvsUnlock(sqlite3_file *base, int target)
 
     if (target == SQLITE_LOCK_SHARED) {
         if (file->lock == SQLITE_LOCK_EXCLUSIVE &&
-            mvsEnq(MVS_LOCK_READ, ENQ_CHNG | ENQ_SHR) != 0)
+            mvsEnq(file->lockRead, ENQ_CHNG | ENQ_SHR) != 0)
             failed = 1;
         if (file->lock >= SQLITE_LOCK_PENDING &&
-            mvsDeq(MVS_LOCK_PENDING) != 0)
+            mvsDeq(file->lockPending) != 0)
             failed = 1;
         if (file->lock >= SQLITE_LOCK_RESERVED &&
-            mvsDeq(MVS_LOCK_WRITE) != 0)
+            mvsDeq(file->lockWrite) != 0)
             failed = 1;
     } else {
         if (file->lock >= SQLITE_LOCK_PENDING &&
-            mvsDeq(MVS_LOCK_PENDING) != 0)
+            mvsDeq(file->lockPending) != 0)
             failed = 1;
         if (file->lock >= SQLITE_LOCK_RESERVED &&
-            mvsDeq(MVS_LOCK_WRITE) != 0)
+            mvsDeq(file->lockWrite) != 0)
             failed = 1;
         if (file->lock >= SQLITE_LOCK_SHARED &&
-            mvsDeq(MVS_LOCK_READ) != 0)
+            mvsDeq(file->lockRead) != 0)
             failed = 1;
     }
     if (!failed) file->lock = target;
@@ -307,7 +359,7 @@ static int mvsCheckReservedLock(sqlite3_file *base, int *result)
         *result = 1;
         return SQLITE_OK;
     }
-    rc = mvsEnq(MVS_LOCK_WRITE, ENQ_TEST | ENQ_EXC);
+    rc = mvsEnq(file->lockWrite, ENQ_TEST | ENQ_EXC);
     *result = rc != 0;
     return SQLITE_OK;
 }
@@ -332,14 +384,20 @@ static int mvsOpen(sqlite3_vfs *vfs, const char *name, sqlite3_file *base,
 {
     MvsFile *file = (MvsFile *)base;
     unsigned char first[MVS_PAGE_SIZE];
+    char database[9];
+    char journalName[9];
     int rc;
     (void)vfs;
     memset(file, 0, sizeof(*file));
     if (flags & SQLITE_OPEN_MAIN_DB) {
-        file->ddname = MVS_DDNAME;
+        if (!mvsNames(name, 0, database, journalName)) return SQLITE_CANTOPEN;
+        strcpy(file->ddname, database);
+        mvsLockNames(file, database);
         file->dataRrn = 1;
     } else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
-        file->ddname = MVS_JOURNAL_DDNAME;
+        if (!mvsNames(name, 1, database, journalName)) return SQLITE_CANTOPEN;
+        strcpy(file->ddname, journalName);
+        mvsLockNames(file, database);
         file->dataRrn = 2;
         file->journal = 1;
     } else {
@@ -372,10 +430,14 @@ static int mvsDelete(sqlite3_vfs *vfs, const char *name, int syncDir)
     unsigned pages;
     unsigned rrn;
     int rc;
+    char database[9];
+    char journalName[9];
     (void)vfs; (void)syncDir;
-    if (!name || strstr(name, "-journal") == 0) return SQLITE_IOERR_DELETE;
+    if (!name || strstr(name, "-journal") == 0 ||
+        !mvsNames(name, 1, database, journalName)) return SQLITE_IOERR_DELETE;
     memset(&file, 0, sizeof(file));
-    file.ddname = MVS_JOURNAL_DDNAME;
+    strcpy(file.ddname, journalName);
+    mvsLockNames(&file, database);
     file.dataRrn = 2;
     file.journal = 1;
     rc = __vsopen(file.ddname, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
@@ -402,10 +464,13 @@ static int mvsAccess(sqlite3_vfs *vfs, const char *name, int flags, int *result)
     unsigned char meta[MVS_PAGE_SIZE];
     int key = 1;
     int rc;
+    char database[9];
+    char journalName[9];
     (void)vfs; (void)flags;
     *result = 0;
-    if (name && strstr(name, "-journal") != 0) {
-        rc = __vsopen(MVS_JOURNAL_DDNAME, VSTYPE_RRDS, VSACCESS_DIR,
+    if (name && strstr(name, "-journal") != 0 &&
+        mvsNames(name, 1, database, journalName)) {
+        rc = __vsopen(journalName, VSTYPE_RRDS, VSACCESS_DIR,
                       VSMODE_UPD, &vs);
         if (rc == 0 && vs != 0) {
             rc = __vsread(vs, meta, sizeof(meta), &key, sizeof(key));
@@ -415,7 +480,7 @@ static int mvsAccess(sqlite3_vfs *vfs, const char *name, int flags, int *result)
                 *result = 1;
             __vsclos(vs);
         }
-    } else if (name && strcmp(name, MVS_DDNAME) == 0) {
+    } else if (name && mvsNames(name, 0, database, journalName)) {
         *result = 1;
     }
     return SQLITE_OK;
