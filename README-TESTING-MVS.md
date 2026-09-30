@@ -85,6 +85,21 @@ The holder should also end with `CC 0000` after reporting that it acquired the
 lock, held it for 15 seconds, and committed. Classes A and B are intentional:
 they allow both jobs to execute in different initiators at the same time.
 
+## Hot-journal recovery test
+
+Start from a successful smoke test so the `smoke` table exists. Then submit
+the deliberate crash job:
+
+```sh
+zowe zos-jobs submit local-file jcl/crash.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+`SQLTCRSH` intentionally terminates with `CC 0012` after filling a transaction
+without committing or closing SQLite. Run `jcl/smoke.jcl` immediately
+afterward. Recovery passes when that job ends with `CC 0000` and prints
+`crash_rows=0`, proving that the hot journal removed the uncommitted rows.
+
 ## Read job output
 
 Replace `JOBnnnnn` with the returned job ID:

@@ -58,6 +58,24 @@ static int runLockTest(sqlite3 *db, int holder)
     return rc;
 }
 
+static int runCrashTest(sqlite3 *db)
+{
+    int i;
+    int rc;
+    rc = runSql(db, "crash-setup",
+        "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; "
+        "PRAGMA cache_size=2; BEGIN IMMEDIATE; "
+        "INSERT INTO smoke(value) VALUES('CRASH PENDING');", 0);
+    for (i = 0; rc == SQLITE_OK && i < 40; i++)
+        rc = sqlite3_exec(db,
+            "INSERT INTO smoke(value) VALUES(zeroblob(3000));",
+            0, 0, 0);
+    printf("crash-fill rc=%d rows=%d; terminating without COMMIT\n", rc, i);
+    fflush(stdout);
+    if (rc == SQLITE_OK) exit(12);
+    return rc;
+}
+
 int main(int argc, char **argv)
 {
     sqlite3 *db = 0;
@@ -78,12 +96,17 @@ int main(int argc, char **argv)
         rc = runLockTest(db, 1);
     else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "PROBE") == 0)
         rc = runLockTest(db, 0);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "CRASH") == 0)
+        rc = runCrashTest(db);
     else {
     if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=DELETE;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=FULL;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "auto-vacuum", "PRAGMA auto_vacuum=FULL;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "create",
         "CREATE TABLE IF NOT EXISTS smoke(id INTEGER PRIMARY KEY,value TEXT);", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "recovery-check",
+        "SELECT count(*) AS crash_rows FROM smoke "
+        "WHERE value='CRASH PENDING' OR typeof(value)='blob';", verifyZero);
     if (rc == SQLITE_OK) rc = runSql(db, "grow",
         "INSERT INTO smoke(value) VALUES(zeroblob(12000));", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "grown-pages",

@@ -68,9 +68,13 @@ test runs with `journal_mode=DELETE` and `synchronous=FULL`; both committed
 transactions and an explicit rollback (`rollback_rows=0`) pass across
 repeated jobs.
 
+Hot-journal recovery is also exercised on MVS. `jcl/crash.jcl` terminates a
+large uncommitted transaction with CC 0012 without closing SQLite. The next
+smoke job detects the journal, rolls the database back, reports
+`crash_rows=0`, and completes with CC 0000.
+
 Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
-`SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection. Hot
-journal crash simulation and recovery validation are the next phase.
+`SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
 See `README-TESTING-MVS.md` for build, deployment, smoke, persistence, spool,
