@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 #include "sqlite3_mvs_names.h"
 #include "sqlite3.h"
@@ -14,13 +15,21 @@
 #define MODE_COLUMN 0
 #define MODE_LIST   1
 #define COLUMN_WIDTH 18
+#define MAX_COLUMNS 16
 
 extern int tsqtget(char *buf, int max) asm("TSQTGET");
 extern int tsqtput(char *buf, int len) asm("TSQTPUT");
 
 typedef struct ShellState ShellState;
 typedef struct RowOutput RowOutput;
-struct ShellState { int headers; int mode; };
+struct ShellState {
+    int headers;
+    int mode;
+    int echo;
+    int timeout;
+    int widths[MAX_COLUMNS];
+    char nullValue[32];
+};
 struct RowOutput {
     int header;
     int rows;
@@ -76,16 +85,30 @@ static void appendText(char *line, int size, int *used, const char *text)
         *used += added;
 }
 
-static void appendColumn(char *line, int size, int *used, const char *text)
+static void appendColumn(char *line, int size, int *used, const char *text,
+                         int width)
 {
-    char field[COLUMN_WIDTH + 1];
+    char field[81];
     int length = (int)strlen(text);
     int i;
-    if (length > COLUMN_WIDTH) length = COLUMN_WIDTH;
+    if (width < 1) width = COLUMN_WIDTH;
+    if (width > 80) width = 80;
+    if (length > width) length = width;
     memcpy(field, text, length);
-    for (i = length; i < COLUMN_WIDTH; i++) field[i] = ' ';
-    field[COLUMN_WIDTH] = '\0';
+    for (i = length; i < width; i++) field[i] = ' ';
+    field[width] = '\0';
     appendText(line, size, used, field);
+}
+
+static void appendRule(char *line, int size, int *used, int width)
+{
+    char rule[81];
+    int i;
+    if (width < 1) width = COLUMN_WIDTH;
+    if (width > 80) width = 80;
+    for (i = 0; i < width; i++) rule[i] = '-';
+    rule[width] = '\0';
+    appendText(line, size, used, rule);
 }
 
 static int equalIgnoreCase(const char *left, const char *right)
@@ -131,11 +154,14 @@ static int printRow(void *context, int columns, char **values, char **names)
     int used = 0;
     int ruleUsed = 0;
     int i;
+    int width;
     if (!output->header && output->shell->headers) {
         line[0] = '\0';
         rule[0] = '\0';
         for (i = 0; i < columns; i++) {
             if (output->shell->mode == MODE_COLUMN) {
+                width = i < MAX_COLUMNS ? output->shell->widths[i]
+                                        : COLUMN_WIDTH;
                 if (i) {
                     appendText(line, sizeof(line), &used, "  ");
                     appendText(rule, sizeof(rule), &ruleUsed, "  ");
@@ -143,9 +169,8 @@ static int printRow(void *context, int columns, char **values, char **names)
                 if (i == columns - 1)
                     appendText(line, sizeof(line), &used, names[i]);
                 else
-                    appendColumn(line, sizeof(line), &used, names[i]);
-                appendText(rule, sizeof(rule), &ruleUsed,
-                           "------------------");
+                    appendColumn(line, sizeof(line), &used, names[i], width);
+                appendRule(rule, sizeof(rule), &ruleUsed, width);
             } else {
                 int n;
                 if (i) {
@@ -165,17 +190,20 @@ static int printRow(void *context, int columns, char **values, char **names)
     line[0] = '\0';
     for (i = 0; i < columns; i++) {
         if (output->shell->mode == MODE_COLUMN) {
+            width = i < MAX_COLUMNS ? output->shell->widths[i]
+                                    : COLUMN_WIDTH;
             if (i) appendText(line, sizeof(line), &used, "  ");
             if (i == columns - 1)
                 appendText(line, sizeof(line), &used,
-                           values[i] ? values[i] : "NULL");
+                           values[i] ? values[i] : output->shell->nullValue);
             else
                 appendColumn(line, sizeof(line), &used,
-                             values[i] ? values[i] : "NULL");
+                             values[i] ? values[i] : output->shell->nullValue,
+                             width);
         } else {
             if (i) appendText(line, sizeof(line), &used, " | ");
             appendText(line, sizeof(line), &used,
-                       values[i] ? values[i] : "NULL");
+                       values[i] ? values[i] : output->shell->nullValue);
         }
     }
     tsoOut("%s", line);
@@ -201,6 +229,7 @@ static int executeSql(sqlite3 *db, ShellState *shell, const char *sql)
     output.header = 0;
     output.rows = 0;
     output.shell = shell;
+    if (shell->echo) tsoOut("SQL> %s", sql);
     rc = sqlite3_exec(db, sql, printRow, &output, &error);
     if (rc == SQLITE_OK) {
         if (output.rows)
@@ -229,6 +258,11 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut(".databases          List attached databases");
         tsoOut(".headers on|off     Show or hide column headers");
         tsoOut(".mode column|list   Select output format");
+        tsoOut(".width N ...        Set column widths (1-80)");
+        tsoOut(".nullvalue TEXT     Set NULL display text");
+        tsoOut(".echo on|off        Echo SQL before execution");
+        tsoOut(".timeout MS         Wait for locks (0 disables)");
+        tsoOut(".show               Show shell settings");
         tsoOut(".version            Show SQLite version");
         tsoOut(".quit / .exit       Return to TSO READY");
         tsoOut("SQL statements must end with ;  PF3 exits");
@@ -270,6 +304,58 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
             tsoOut("Mode: list");
         }
         else tsoOut("Usage: .mode column|list");
+    } else if (startsIgnoreCase(line, ".width")) {
+        char *value = trim(line + 6);
+        char *part;
+        int column = 0;
+        part = strtok(value, " ");
+        while (part && column < MAX_COLUMNS) {
+            int width = atoi(part);
+            if (width < 1 || width > 80) {
+                tsoOut("Usage: .width N ... (each N is 1-80)");
+                return 0;
+            }
+            shell->widths[column++] = width;
+            part = strtok(0, " ");
+        }
+        if (!column) tsoOut("Usage: .width N ... (each N is 1-80)");
+        else tsoOut("Widths updated for %d column%s", column,
+                    column == 1 ? "" : "s");
+    } else if (startsIgnoreCase(line, ".nullvalue")) {
+        char *value = trim(line + 10);
+        if (!*value || strlen(value) >= sizeof(shell->nullValue))
+            tsoOut("Usage: .nullvalue TEXT (maximum 31 characters)");
+        else {
+            strcpy(shell->nullValue, value);
+            tsoOut("NULL value: %s", shell->nullValue);
+        }
+    } else if (startsIgnoreCase(line, ".echo")) {
+        char *value = trim(line + 5);
+        if (equalIgnoreCase(value, "on")) shell->echo = 1;
+        else if (equalIgnoreCase(value, "off")) shell->echo = 0;
+        else {
+            tsoOut("Usage: .echo on|off");
+            return 0;
+        }
+        tsoOut("Echo: %s", shell->echo ? "on" : "off");
+    } else if (startsIgnoreCase(line, ".timeout")) {
+        char *value = trim(line + 8);
+        int timeout = atoi(value);
+        if (!*value || timeout < 0) tsoOut("Usage: .timeout MILLISECONDS");
+        else {
+            shell->timeout = timeout;
+            sqlite3_busy_timeout(db, timeout);
+            tsoOut("Busy timeout: %d ms", timeout);
+        }
+    } else if (equalIgnoreCase(line, ".show")) {
+        tsoOut("Setting             Value");
+        tsoOut("------------------  ------------------------------");
+        tsoOut("headers             %s", shell->headers ? "on" : "off");
+        tsoOut("mode                %s",
+               shell->mode == MODE_COLUMN ? "column" : "list");
+        tsoOut("echo                %s", shell->echo ? "on" : "off");
+        tsoOut("timeout             %d ms", shell->timeout);
+        tsoOut("nullvalue           %s", shell->nullValue);
     } else {
         tsoOut("Unknown command. Use .help");
     }
@@ -285,8 +371,13 @@ int main(void)
     int length;
     int rc;
     ShellState shell;
+    int i;
     shell.headers = 1;
     shell.mode = MODE_COLUMN;
+    shell.echo = 0;
+    shell.timeout = 0;
+    strcpy(shell.nullValue, "NULL");
+    for (i = 0; i < MAX_COLUMNS; i++) shell.widths[i] = COLUMN_WIDTH;
     statement[0] = '\0';
     rc = sqlite3_initialize();
     if (rc == SQLITE_OK)

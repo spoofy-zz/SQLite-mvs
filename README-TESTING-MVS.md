@@ -156,6 +156,54 @@ The holder should also end with `CC 0000` after reporting that it acquired the
 lock, held it for 15 seconds, and committed. Classes A and B are intentional:
 they allow both jobs to execute in different initiators at the same time.
 
+## SQL regression suite
+
+Run the independent DDL/DML regression suite after the ordinary smoke test:
+
+```sh
+zowe zos-jobs submit local-file jcl/test-suite.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+`SQLTSUIT` tests tables, indexes, joins, aggregates, NULL values, updates,
+transaction rollback, savepoints, UNIQUE constraints, blobs, views, foreign
+key cascades, and cleanup. It passes with `CC 0000` and the final line:
+
+```text
+SQLITE MVS TEST SUITE PASSED
+```
+
+## TSO-to-batch locking test
+
+Start `SQLITE` at TSO READY, then hold an uncommitted writer transaction:
+
+```sql
+BEGIN IMMEDIATE;
+INSERT INTO smoke(value) VALUES('TSO UNCOMMITTED');
+```
+
+While TSO is waiting at its next prompt, submit:
+
+```sh
+zowe zos-jobs submit local-file jcl/tso-lock-probe.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+The batch probe must finish with `CC 0000` and report the expected
+`SQLITE_BUSY`. Return to TSO and enter `ROLLBACK;`; the marker row must not be
+visible. This verifies that the SYSTEM-scope ENQ resources cover foreground
+TSO and batch address spaces, not only two batch initiators.
+
+To verify waiting rather than immediate failure, enter `.timeout 20000` in
+TSO, submit `jcl/lock-holder.jcl`, wait for its `lock-holder acquired` message,
+and issue an INSERT from TSO. The operation should finish after the holder's
+15-second commit. The VFS uses a timed MVS wait between retries.
+
+The same timeout path has an automated two-initiator regression. Submit
+`jcl/lock-holder.jcl`, then submit `jcl/lock-waiter.jcl` while the holder is
+active. `SQLTWAIT` uses a 30-second busy timeout and passes when it reports
+`lock-wait acquired after holder release` with CC 0000.
+
 ## Hot-journal recovery test
 
 Start from a successful smoke test so the `smoke` table exists. Then submit

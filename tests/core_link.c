@@ -58,6 +58,23 @@ static int runLockTest(sqlite3 *db, int holder)
     return rc;
 }
 
+static int runWaitTest(sqlite3 *db)
+{
+    char *error = 0;
+    time_t started = time(0);
+    int rc;
+    sqlite3_busy_timeout(db, 30000);
+    rc = sqlite3_exec(db,
+        "PRAGMA journal_mode=DELETE; BEGIN IMMEDIATE; COMMIT;",
+        0, 0, &error);
+    printf("lock-wait rc=%d elapsed=%ld%s%s\n", rc,
+           (long)(time(0) - started), error ? " error=" : "",
+           error ? error : "");
+    if (error) sqlite3_free(error);
+    if (rc == SQLITE_OK) printf("lock-wait acquired after holder release\n");
+    return rc;
+}
+
 static int runCrashTest(sqlite3 *db)
 {
     int i;
@@ -73,6 +90,114 @@ static int runCrashTest(sqlite3 *db)
     printf("crash-fill rc=%d rows=%d; terminating without COMMIT\n", rc, i);
     fflush(stdout);
     if (rc == SQLITE_OK) exit(12);
+    return rc;
+}
+
+typedef struct ExpectedValue ExpectedValue;
+struct ExpectedValue {
+    const char *value;
+    int seen;
+    int matched;
+};
+
+static int checkValue(void *context, int columns, char **values, char **names)
+{
+    ExpectedValue *expected = (ExpectedValue *)context;
+    (void)names;
+    expected->seen++;
+    if (columns == 1 && values[0] && strcmp(values[0], expected->value) == 0)
+        expected->matched = 1;
+    return 0;
+}
+
+static int expectValue(sqlite3 *db, const char *label, const char *sql,
+                       const char *value)
+{
+    ExpectedValue expected;
+    char *error = 0;
+    int rc;
+    expected.value = value;
+    expected.seen = 0;
+    expected.matched = 0;
+    rc = sqlite3_exec(db, sql, checkValue, &expected, &error);
+    printf("suite %-18s rc=%d expected=%s seen=%d %s%s%s\n", label, rc,
+           value, expected.seen, expected.matched ? "PASS" : "FAIL",
+           error ? " error=" : "", error ? error : "");
+    if (error) sqlite3_free(error);
+    return rc == SQLITE_OK && expected.seen == 1 && expected.matched
+           ? SQLITE_OK : SQLITE_ERROR;
+}
+
+static int suiteSql(sqlite3 *db, const char *label, const char *sql)
+{
+    int rc = runSql(db, label, sql, 0);
+    printf("suite %-18s %s\n", label, rc == SQLITE_OK ? "PASS" : "FAIL");
+    return rc;
+}
+
+static int runSuite(sqlite3 *db)
+{
+    char *error = 0;
+    int rc;
+    rc = suiteSql(db, "setup",
+        "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; "
+        "PRAGMA foreign_keys=ON; "
+        "DROP VIEW IF EXISTS ts_view; DROP TABLE IF EXISTS ts_child; "
+        "DROP TABLE IF EXISTS ts_parent; "
+        "CREATE TABLE ts_parent(id INTEGER PRIMARY KEY,name TEXT UNIQUE); "
+        "CREATE TABLE ts_child(id INTEGER PRIMARY KEY,parent_id INTEGER,"
+        "amount INTEGER,note TEXT,FOREIGN KEY(parent_id) REFERENCES "
+        "ts_parent(id) ON DELETE CASCADE); "
+        "CREATE INDEX ts_child_parent ON ts_child(parent_id);");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "insert",
+        "BEGIN; INSERT INTO ts_parent VALUES(1,'alpha'); "
+        "INSERT INTO ts_parent VALUES(2,'beta'); "
+        "INSERT INTO ts_child VALUES(1,1,10,'one'); "
+        "INSERT INTO ts_child VALUES(2,1,20,NULL); "
+        "INSERT INTO ts_child VALUES(3,2,30,'three'); COMMIT;");
+    if (rc == SQLITE_OK) rc = expectValue(db, "join", "SELECT count(*) "
+        "FROM ts_parent p JOIN ts_child c ON c.parent_id=p.id;", "3");
+    if (rc == SQLITE_OK) rc = expectValue(db, "aggregate",
+        "SELECT sum(amount) FROM ts_child;", "60");
+    if (rc == SQLITE_OK) rc = expectValue(db, "null",
+        "SELECT count(*) FROM ts_child WHERE note IS NULL;", "1");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "update",
+        "UPDATE ts_parent SET name=upper(name) WHERE id=2;");
+    if (rc == SQLITE_OK) rc = expectValue(db, "updated-value",
+        "SELECT name FROM ts_parent WHERE id=2;", "BETA");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "rollback",
+        "BEGIN; INSERT INTO ts_parent VALUES(9,'rollback'); ROLLBACK;");
+    if (rc == SQLITE_OK) rc = expectValue(db, "rollback-check",
+        "SELECT count(*) FROM ts_parent WHERE id=9;", "0");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "savepoint",
+        "BEGIN; SAVEPOINT s1; INSERT INTO ts_parent VALUES(8,'savepoint'); "
+        "ROLLBACK TO s1; RELEASE s1; COMMIT;");
+    if (rc == SQLITE_OK) rc = expectValue(db, "savepoint-check",
+        "SELECT count(*) FROM ts_parent WHERE id=8;", "0");
+    if (rc == SQLITE_OK) {
+        rc = sqlite3_exec(db, "INSERT INTO ts_parent VALUES(3,'alpha');",
+                          0, 0, &error);
+        printf("suite %-18s rc=%d expected=%d %s%s%s\n", "constraint", rc,
+               SQLITE_CONSTRAINT, rc == SQLITE_CONSTRAINT ? "PASS" : "FAIL",
+               error ? " error=" : "", error ? error : "");
+        if (error) sqlite3_free(error);
+        error = 0;
+        rc = rc == SQLITE_CONSTRAINT ? SQLITE_OK : SQLITE_ERROR;
+    }
+    if (rc == SQLITE_OK) rc = expectValue(db, "blob",
+        "SELECT length(zeroblob(4097));", "4097");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "view",
+        "CREATE VIEW ts_view AS SELECT parent_id,sum(amount) total "
+        "FROM ts_child GROUP BY parent_id;");
+    if (rc == SQLITE_OK) rc = expectValue(db, "view-check",
+        "SELECT total FROM ts_view WHERE parent_id=1;", "30");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "cascade",
+        "DELETE FROM ts_parent WHERE id=1;");
+    if (rc == SQLITE_OK) rc = expectValue(db, "cascade-check",
+        "SELECT count(*) FROM ts_child;", "1");
+    if (rc == SQLITE_OK) rc = suiteSql(db, "cleanup",
+        "DROP VIEW ts_view; DROP TABLE ts_child; DROP TABLE ts_parent;");
+    printf("SQLITE MVS TEST SUITE %s\n", rc == SQLITE_OK ? "PASSED" : "FAILED");
     return rc;
 }
 
@@ -96,8 +221,12 @@ int main(int argc, char **argv)
         rc = runLockTest(db, 1);
     else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "PROBE") == 0)
         rc = runLockTest(db, 0);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "WAIT") == 0)
+        rc = runWaitTest(db);
     else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "CRASH") == 0)
         rc = runCrashTest(db);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "SUITE") == 0)
+        rc = runSuite(db);
     else {
     if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=DELETE;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=FULL;", 0);

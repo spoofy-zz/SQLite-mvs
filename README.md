@@ -75,7 +75,8 @@ smoke job detects the journal, rolls the database back, reports
 
 An interactive foreground TSO client is now included as load module
 `SQLITSO`. It accepts multi-line SQL, prints query columns and rows, and
-supports `.help`, `.tables`, `.schema`, `.quit`, and `.exit`. The supplied
+supports configurable column/list output, headers, widths, NULL text, SQL
+echo, busy timeout, schema/database inspection, and clean PF3 exit. The supplied
 `SQLITE` CLIST allocates both RRDS clusters and invokes the client, so an
 installed copy starts from a TSO READY prompt with:
 
@@ -87,12 +88,21 @@ Build it with `make tso`. The MBT deployment packages both `SQLTTEST` and
 `SQLITSO`; install `clist/SQLITE.clist` as `SYS2.CMDPROC(SQLITE)` to expose
 the short TSO command.
 
+`jcl/test-suite.jcl` runs a broader SQL regression suite covering DDL, indexes,
+joins, aggregates, NULL handling, rollback, savepoints, constraints, blobs,
+views, and foreign-key cascades. It passed on Turnkey5 as JOB01251 with
+CC 0000. Busy-timeout retry is verified by `jcl/lock-holder.jcl` plus
+`jcl/lock-waiter.jcl`; JOB01254 waited five seconds for the holder, acquired
+the lock, and ended CC 0000 while consuming only 0.21 CPU seconds.
+
 Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
 `SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
 See `README-TESTING-MVS.md` for interactive TSO use plus build, deployment,
 smoke, persistence, spool, and concurrent-locking test instructions.
+See `README-TSO.md` for the complete interactive command reference and TSO
+locking workflow.
 
 ## MBT
 

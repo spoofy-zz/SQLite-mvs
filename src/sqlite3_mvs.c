@@ -9,6 +9,8 @@
 #include <clibenq.h>
 #include <clibvsam.h>
 
+extern int usleep(unsigned usec);
+
 #define MVS_PAGE_SIZE 4096
 #define MVS_DDNAME "SQLDB"
 #define MVS_JOURNAL_DDNAME "SQLJRN"
@@ -446,10 +448,8 @@ static int mvsRandomness(sqlite3_vfs *vfs, int amount, char *out)
 
 static int mvsSleep(sqlite3_vfs *vfs, int microseconds)
 {
-    clock_t begin = clock();
-    clock_t ticks = (clock_t)(((long)microseconds * CLOCKS_PER_SEC) / 1000000L);
     (void)vfs;
-    while (clock() - begin < ticks) { }
+    if (microseconds > 0) usleep((unsigned)microseconds);
     return microseconds;
 }
 
