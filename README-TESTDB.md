@@ -47,20 +47,20 @@ At TSO READY:
 TESTDB
 ```
 
-The second table is named `order` exactly as requested. Because `ORDER` is an
-SQL keyword, quote its name with double quotes in SQL statements.
+The second table is named `orders` so it can be used without quoting an SQL
+keyword.
 
 Useful queries:
 
 ```sql
 .tables
 SELECT count(*) AS people_count FROM people;
-SELECT count(*) AS order_count FROM "order";
+SELECT count(*) AS order_count FROM orders;
 SELECT p.id,p.name,p.city,o.id,o.item,o.quantity,o.amount
-FROM people p JOIN "order" o ON o.people_id=p.id
+FROM people p JOIN orders o ON o.people_id=p.id
 ORDER BY p.id,o.id;
 SELECT p.name,count(*) AS orders,sum(o.amount) AS total
-FROM people p JOIN "order" o ON o.people_id=p.id
+FROM people p JOIN orders o ON o.people_id=p.id
 GROUP BY p.id,p.name ORDER BY p.id;
 .quit
 ```
@@ -76,7 +76,7 @@ CREATE TABLE people(
   email TEXT UNIQUE
 );
 
-CREATE TABLE "order"(
+CREATE TABLE orders(
   id INTEGER PRIMARY KEY,
   people_id INTEGER NOT NULL,
   item TEXT NOT NULL,
@@ -85,7 +85,7 @@ CREATE TABLE "order"(
   FOREIGN KEY(people_id) REFERENCES people(id)
 );
 
-CREATE INDEX order_people ON "order"(people_id);
+CREATE INDEX orders_people ON orders(people_id);
 ```
 
 People are named `P01` through `P20`. Cities rotate through Zagreb, Split,

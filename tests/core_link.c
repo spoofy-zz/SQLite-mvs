@@ -213,14 +213,14 @@ static int runSeedTestdb(sqlite3 *db)
     int rc;
     rc = suiteSql(db, "testdb-schema",
         "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; "
-        "PRAGMA foreign_keys=ON; DROP TABLE IF EXISTS \"order\"; "
+        "PRAGMA foreign_keys=ON; DROP TABLE IF EXISTS orders; "
         "DROP TABLE IF EXISTS people; "
         "CREATE TABLE people(id INTEGER PRIMARY KEY,name TEXT NOT NULL,"
         "city TEXT,age INTEGER,email TEXT UNIQUE); "
-        "CREATE TABLE \"order\"(id INTEGER PRIMARY KEY,people_id INTEGER "
+        "CREATE TABLE orders(id INTEGER PRIMARY KEY,people_id INTEGER "
         "NOT NULL,item TEXT NOT NULL,quantity INTEGER NOT NULL,amount INTEGER "
         "NOT NULL,FOREIGN KEY(people_id) REFERENCES people(id)); "
-        "CREATE INDEX order_people ON \"order\"(people_id); BEGIN;");
+        "CREATE INDEX orders_people ON orders(people_id); BEGIN;");
     for (person = 1; rc == SQLITE_OK && person <= 20; person++) {
         snprintf(sql, sizeof(sql),
             "INSERT INTO people VALUES(%d,'P%02d','%s',%d,'P%02d@EXAMPLE');",
@@ -228,7 +228,7 @@ static int runSeedTestdb(sqlite3 *db)
         rc = sqlite3_exec(db, sql, 0, 0, 0);
         for (item = 0; rc == SQLITE_OK && item < 3; item++) {
             snprintf(sql, sizeof(sql),
-                "INSERT INTO \"order\" VALUES(%d,%d,'%s',%d,%d);",
+                "INSERT INTO orders VALUES(%d,%d,'%s',%d,%d);",
                 person * 100 + item + 1, person, items[item], item + 1,
                 person * 100 + (item + 1) * 25);
             rc = sqlite3_exec(db, sql, 0, 0, 0);
@@ -240,9 +240,9 @@ static int runSeedTestdb(sqlite3 *db)
     if (rc == SQLITE_OK) rc = expectValue(db, "testdb-people",
         "SELECT count(*) FROM people;", "20");
     if (rc == SQLITE_OK) rc = expectValue(db, "testdb-orders",
-        "SELECT count(*) FROM \"order\";", "60");
+        "SELECT count(*) FROM orders;", "60");
     if (rc == SQLITE_OK) rc = expectValue(db, "testdb-three-each",
-        "SELECT count(*) FROM (SELECT people_id FROM \"order\" GROUP BY "
+        "SELECT count(*) FROM (SELECT people_id FROM orders GROUP BY "
         "people_id HAVING count(*)=3);", "20");
     printf("SQLITE TESTDB %s\n", rc == SQLITE_OK ? "CREATED" : "FAILED");
     return rc;

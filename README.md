@@ -105,6 +105,8 @@ See `README-TSO.md` for the complete interactive command reference and TSO
 locking workflow.
 See `README-TESTDB.md` for the separate 20-person/60-order sample database and
 the `TESTDB` TSO command.
+See `README-CREATE-DATABASE.md` for creating another empty RRDS database and a
+dedicated TSO launcher.
 
 ## MBT
 
