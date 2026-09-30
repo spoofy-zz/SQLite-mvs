@@ -14,6 +14,7 @@
 #define TERM_PF3   0xf3
 #define MODE_COLUMN 0
 #define MODE_LIST   1
+#define MODE_LINE   2
 #define COLUMN_WIDTH 18
 #define MAX_COLUMNS 16
 
@@ -27,9 +28,11 @@ struct ShellState {
     int headers;
     int mode;
     int echo;
+    int changes;
     int timeout;
     int widths[MAX_COLUMNS];
     char nullValue[32];
+    char separator[16];
 };
 struct RowOutput {
     int header;
@@ -156,6 +159,20 @@ static int printRow(void *context, int columns, char **values, char **names)
     int ruleUsed = 0;
     int i;
     int width;
+    if (output->shell->mode == MODE_LINE) {
+        int nameWidth = 0;
+        if (output->rows) tsoOut("");
+        for (i = 0; i < columns; i++) {
+            width = (int)strlen(names[i]);
+            if (width > nameWidth) nameWidth = width;
+        }
+        for (i = 0; i < columns; i++)
+            tsoOut("%*s = %s", nameWidth, names[i],
+                   values[i] ? values[i] : output->shell->nullValue);
+        output->header = 1;
+        output->rows++;
+        return 0;
+    }
     if (!output->header && output->shell->headers) {
         line[0] = '\0';
         rule[0] = '\0';
@@ -202,7 +219,8 @@ static int printRow(void *context, int columns, char **values, char **names)
                              values[i] ? values[i] : output->shell->nullValue,
                              width);
         } else {
-            if (i) appendText(line, sizeof(line), &used, " | ");
+            if (i) appendText(line, sizeof(line), &used,
+                              output->shell->separator);
             appendText(line, sizeof(line), &used,
                        values[i] ? values[i] : output->shell->nullValue);
         }
@@ -244,7 +262,28 @@ static int executeSql(sqlite3 *db, ShellState *shell, const char *sql)
     else
         tsoOut("ERROR %d: %s", rc, error ? error : sqlite3_errmsg(db));
     if (error) sqlite3_free(error);
+    if (rc == SQLITE_OK && shell->changes)
+        tsoOut("Changes: %d  Total changes: %d", sqlite3_changes(db),
+               sqlite3_total_changes(db));
     return rc;
+}
+
+static void resetShell(ShellState *shell)
+{
+    int i;
+    shell->headers = 1;
+    shell->mode = MODE_COLUMN;
+    shell->echo = 0;
+    shell->changes = 0;
+    shell->timeout = 0;
+    strcpy(shell->nullValue, "NULL");
+    strcpy(shell->separator, " | ");
+    for (i = 0; i < MAX_COLUMNS; i++) shell->widths[i] = COLUMN_WIDTH;
+}
+
+static char *sqlQuote(const char *value)
+{
+    return sqlite3_mprintf("%q", value);
 }
 
 static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
@@ -255,15 +294,23 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut("Command             Description");
         tsoOut("------------------  --------------------------------");
         tsoOut(".tables             List tables");
+        tsoOut(".indexes [table]    List indexes");
         tsoOut(".schema [table]     Show CREATE statements");
+        tsoOut(".tableinfo table    Show table columns");
         tsoOut(".databases          List attached databases");
+        tsoOut(".foreignkeys on|off Enable or disable FK checks");
+        tsoOut(".stats              Show database statistics");
+        tsoOut(".lastid             Show last inserted rowid");
         tsoOut(".headers on|off     Show or hide column headers");
-        tsoOut(".mode column|list   Select output format");
+        tsoOut(".mode column|list|line  Select output format");
+        tsoOut(".separator TEXT     Set list-mode separator");
         tsoOut(".width N ...        Set column widths (1-80)");
         tsoOut(".nullvalue TEXT     Set NULL display text");
         tsoOut(".echo on|off        Echo SQL before execution");
+        tsoOut(".changes on|off     Show per-statement change counts");
         tsoOut(".timeout MS         Wait for locks (0 disables)");
         tsoOut(".show               Show shell settings");
+        tsoOut(".reset              Restore default shell settings");
         tsoOut(".clear              Clear screen and move cursor home");
         tsoOut(".version            Show SQLite version");
         tsoOut(".quit / .exit       Return to TSO READY");
@@ -271,17 +318,78 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
     } else if (equalIgnoreCase(line, ".tables")) {
         executeSql(db, shell,
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
+    } else if (startsIgnoreCase(line, ".indexes")) {
+        char sql[TSO_OUT];
+        char *name = trim(line + 8);
+        char *quoted = sqlQuote(name);
+        if (!quoted) {
+            tsoOut("ERROR: insufficient memory");
+        } else {
+            if (*name)
+                snprintf(sql, sizeof(sql),
+                    "SELECT name FROM sqlite_master WHERE type='index' "
+                    "AND tbl_name='%s' ORDER BY name;", quoted);
+            else
+                strcpy(sql, "SELECT name FROM sqlite_master WHERE "
+                       "type='index' ORDER BY name;");
+            sqlite3_free(quoted);
+            executeSql(db, shell, sql);
+        }
     } else if (startsIgnoreCase(line, ".schema")) {
         char sql[TSO_OUT];
         char *name = trim(line + 7);
-        if (*name)
+        char *quoted = sqlQuote(name);
+        if (!quoted) {
+            tsoOut("ERROR: insufficient memory");
+        } else if (*name) {
             snprintf(sql, sizeof(sql),
-                "SELECT sql FROM sqlite_master WHERE name='%s';", name);
-        else
+                "SELECT sql FROM sqlite_master WHERE name='%s';", quoted);
+            sqlite3_free(quoted);
+            executeSql(db, shell, sql);
+        } else {
+            sqlite3_free(quoted);
             strcpy(sql, "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name;");
-        executeSql(db, shell, sql);
+            executeSql(db, shell, sql);
+        }
+    } else if (startsIgnoreCase(line, ".tableinfo")) {
+        char sql[TSO_OUT];
+        char *name = trim(line + 10);
+        char *quoted;
+        if (!*name) {
+            tsoOut("Usage: .tableinfo TABLE");
+        } else {
+            quoted = sqlQuote(name);
+            if (!quoted) tsoOut("ERROR: insufficient memory");
+            else {
+                snprintf(sql, sizeof(sql), "PRAGMA table_info('%s');",
+                         quoted);
+                sqlite3_free(quoted);
+                executeSql(db, shell, sql);
+            }
+        }
     } else if (equalIgnoreCase(line, ".databases")) {
         executeSql(db, shell, "PRAGMA database_list;");
+    } else if (startsIgnoreCase(line, ".foreignkeys")) {
+        char *value = trim(line + 12);
+        if (equalIgnoreCase(value, "on")) {
+            executeSql(db, shell, "PRAGMA foreign_keys=ON;");
+            tsoOut("Foreign keys: on");
+        } else if (equalIgnoreCase(value, "off")) {
+            executeSql(db, shell, "PRAGMA foreign_keys=OFF;");
+            tsoOut("Foreign keys: off");
+        } else if (!*value) {
+            executeSql(db, shell, "PRAGMA foreign_keys;");
+        } else tsoOut("Usage: .foreignkeys on|off");
+    } else if (equalIgnoreCase(line, ".stats")) {
+        executeSql(db, shell, "PRAGMA page_size;");
+        executeSql(db, shell, "PRAGMA page_count;");
+        executeSql(db, shell, "PRAGMA freelist_count;");
+        executeSql(db, shell, "PRAGMA journal_mode;");
+        executeSql(db, shell, "PRAGMA synchronous;");
+    } else if (equalIgnoreCase(line, ".lastid")) {
+        tsoOut("Last insert rowid");
+        tsoOut("-----------------");
+        tsoOut("%lld", sqlite3_last_insert_rowid(db));
     } else if (equalIgnoreCase(line, ".version")) {
         tsoOut("SQLite version");
         tsoOut("------------------");
@@ -304,8 +412,19 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         } else if (equalIgnoreCase(value, "list")) {
             shell->mode = MODE_LIST;
             tsoOut("Mode: list");
+        } else if (equalIgnoreCase(value, "line")) {
+            shell->mode = MODE_LINE;
+            tsoOut("Mode: line");
         }
-        else tsoOut("Usage: .mode column|list");
+        else tsoOut("Usage: .mode column|list|line");
+    } else if (startsIgnoreCase(line, ".separator")) {
+        char *value = trim(line + 10);
+        if (!*value || strlen(value) >= sizeof(shell->separator))
+            tsoOut("Usage: .separator TEXT (maximum 15 characters)");
+        else {
+            strcpy(shell->separator, value);
+            tsoOut("Separator: %s", shell->separator);
+        }
     } else if (startsIgnoreCase(line, ".width")) {
         char *value = trim(line + 6);
         char *part;
@@ -340,6 +459,15 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
             return 0;
         }
         tsoOut("Echo: %s", shell->echo ? "on" : "off");
+    } else if (startsIgnoreCase(line, ".changes")) {
+        char *value = trim(line + 8);
+        if (equalIgnoreCase(value, "on")) shell->changes = 1;
+        else if (equalIgnoreCase(value, "off")) shell->changes = 0;
+        else {
+            tsoOut("Usage: .changes on|off");
+            return 0;
+        }
+        tsoOut("Changes: %s", shell->changes ? "on" : "off");
     } else if (startsIgnoreCase(line, ".timeout")) {
         char *value = trim(line + 8);
         int timeout = atoi(value);
@@ -354,10 +482,17 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut("------------------  ------------------------------");
         tsoOut("headers             %s", shell->headers ? "on" : "off");
         tsoOut("mode                %s",
-               shell->mode == MODE_COLUMN ? "column" : "list");
+               shell->mode == MODE_COLUMN ? "column" :
+               (shell->mode == MODE_LIST ? "list" : "line"));
         tsoOut("echo                %s", shell->echo ? "on" : "off");
+        tsoOut("changes             %s", shell->changes ? "on" : "off");
         tsoOut("timeout             %d ms", shell->timeout);
         tsoOut("nullvalue           %s", shell->nullValue);
+        tsoOut("separator           %s", shell->separator);
+    } else if (equalIgnoreCase(line, ".reset")) {
+        resetShell(shell);
+        sqlite3_busy_timeout(db, 0);
+        tsoOut("Shell settings restored to defaults");
     } else if (equalIgnoreCase(line, ".clear")) {
         if (tsqtclr() != 0) tsoOut("ERROR: cannot clear terminal screen");
     } else {
@@ -375,13 +510,7 @@ int main(void)
     int length;
     int rc;
     ShellState shell;
-    int i;
-    shell.headers = 1;
-    shell.mode = MODE_COLUMN;
-    shell.echo = 0;
-    shell.timeout = 0;
-    strcpy(shell.nullValue, "NULL");
-    for (i = 0; i < MAX_COLUMNS; i++) shell.widths[i] = COLUMN_WIDTH;
+    resetShell(&shell);
     statement[0] = '\0';
     rc = sqlite3_initialize();
     if (rc == SQLITE_OK)

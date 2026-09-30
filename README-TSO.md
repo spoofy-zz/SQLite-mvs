@@ -44,15 +44,23 @@ See `README-TESTDB.md` for its schema, seed job, and example joins.
 Command             Description
 ------------------  --------------------------------
 .tables             List tables
+.indexes [table]    List indexes, optionally for one table
 .schema [table]     Show CREATE statements
+.tableinfo table    Show columns, defaults, and primary-key flags
 .databases          List attached databases
+.foreignkeys [on|off]  Show or change foreign-key enforcement
+.stats              Show page and journal statistics
+.lastid             Show the last inserted rowid
 .headers on|off     Show or hide column headers
-.mode column|list   Select output format
+.mode column|list|line  Select output format
+.separator TEXT     Set the list-mode separator
 .width N ...        Set column widths (1-80)
 .nullvalue TEXT     Set NULL display text
 .echo on|off        Echo SQL before execution
+.changes on|off     Show current and total change counts
 .timeout MS         Wait for database locks
 .show               Show shell settings
+.reset              Restore default shell settings
 .clear              Clear screen and move cursor home
 .version            Show SQLite version
 .quit / .exit       Return to TSO READY
@@ -60,7 +68,9 @@ Command             Description
 
 `column` is the default output mode. Earlier result columns use their
 configured widths and the final column is not truncated. `list` prints full
-values separated with ` | `.
+values separated with ` | ` or the value selected by `.separator`. `line`
+prints one `column = value` pair per line and is useful for wide rows on a
+24x80 terminal.
 
 Example configuration:
 
@@ -69,9 +79,28 @@ Example configuration:
 .mode column
 .width 8 24 40
 .nullvalue (null)
+.changes on
 .timeout 15000
 .show
 ```
+
+Useful inspection commands:
+
+```text
+.indexes people
+.tableinfo people
+.foreignkeys
+.stats
+.mode line
+SELECT * FROM people WHERE id=1;
+.reset
+```
+
+`.foreignkeys` without an argument reports the current SQLite setting.
+`.stats` reports the RRDS database page size, allocated page count, freelist
+count, journal mode, and synchronous level. `.lastid` reports the connection's
+most recent rowid, while `.changes on` adds both current and cumulative change
+counts after successful SQL statements.
 
 `.timeout` uses milliseconds. Zero restores immediate `SQLITE_BUSY`. The MVS
 VFS sleeps with `STIMER WAIT` between retries, so a waiting TSO session does
