@@ -30,6 +30,18 @@ sources = [
   "tests/core_link.c",
 ]
 
+[[module]]
+name = "SQLITSO"
+entry = "@@CRT0"
+startup = "crt0"
+sources = [
+  "vendor/sqlite/sqlite3.c",
+  "src/sqlite3_mvs.c",
+  "src/sqlite_tso.c",
+  "asm/tsqtget.asm",
+  "asm/tsqtput.asm",
+]
+
 [deploy]
 target = "IBMUSER.SQLITE.LOAD"
 

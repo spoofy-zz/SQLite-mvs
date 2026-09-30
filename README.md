@@ -73,12 +73,26 @@ large uncommitted transaction with CC 0012 without closing SQLite. The next
 smoke job detects the journal, rolls the database back, reports
 `crash_rows=0`, and completes with CC 0000.
 
+An interactive foreground TSO client is now included as load module
+`SQLITSO`. It accepts multi-line SQL, prints query columns and rows, and
+supports `.help`, `.tables`, `.schema`, `.quit`, and `.exit`. The supplied
+`SQLITE` CLIST allocates both RRDS clusters and invokes the client, so an
+installed copy starts from a TSO READY prompt with:
+
+```text
+SQLITE
+```
+
+Build it with `make tso`. The MBT deployment packages both `SQLTTEST` and
+`SQLITSO`; install `clist/SQLITE.clist` as `SYS2.CMDPROC(SQLITE)` to expose
+the short TSO command.
+
 Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
 `SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
-See `README-TESTING-MVS.md` for build, deployment, smoke, persistence, spool,
-and concurrent-locking test instructions.
+See `README-TESTING-MVS.md` for interactive TSO use plus build, deployment,
+smoke, persistence, spool, and concurrent-locking test instructions.
 
 ## MBT
 

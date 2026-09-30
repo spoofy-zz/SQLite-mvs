@@ -6,18 +6,82 @@ submit the supplied JCL through the Zowe profile named `hercules`.
 ## Build and deploy
 
 Build the host-side cc370/libc370 SDK once, then compile, link, and deploy the
-`SQLTTEST` load module:
+`SQLTTEST` batch test and `SQLITSO` interactive load modules:
 
 ```sh
 git submodule update --init --recursive
 make sdk
 make probe
+make tso
 PATH=/opt/homebrew/bin:$PWD/build/sdk/bin:/usr/bin:/bin \
   python3 mbt/scripts/mbtdeploy.py \
   --project project.toml --builddir build --ld "$PWD/build/sdk/bin/ld370"
 ```
 
 The deploy target is `IBMUSER.SQLITE.LOAD`.
+
+## Interactive TSO client
+
+Upload the supplied CLIST once (use a different command library if
+`SYS2.CMDPROC` is not in your site's TSO command search path):
+
+```sh
+zowe zos-files upload file-to-data-set clist/SQLITE.clist \
+  'SYS2.CMDPROC(SQLITE)' --zosmf-profile hercules
+```
+
+At a TSO READY prompt, enter:
+
+```text
+SQLITE
+```
+
+The expected banner is:
+
+```text
+SQLite 3.8.11.1 for MVS TSO
+Use .help for commands
+sqlite>
+```
+
+Example session:
+
+```text
+sqlite> .tables
+name
+smoke
+OK
+sqlite> SELECT id,value FROM smoke ORDER BY id DESC LIMIT 2;
+id | value
+2 | MVS RRDS
+1 | MVS RRDS
+OK
+sqlite> .schema smoke
+sql
+CREATE TABLE smoke(id INTEGER PRIMARY KEY, value TEXT)
+OK
+sqlite> .quit
+SQLite TSO session ended
+```
+
+SQL can span multiple input lines; execution starts when
+`sqlite3_complete()` sees a terminating semicolon. Available shell commands
+are `.help`, `.tables`, `.schema [table]`, `.quit`, and `.exit`.
+
+To invoke the load module without installing the CLIST, use these commands
+from TSO READY:
+
+```text
+ALLOC FI(SQLDB) DA('IBMUSER.SQLITE.RRDS') SHR
+ALLOC FI(SQLJRN) DA('IBMUSER.SQLITE.JOURNAL') SHR
+CALL 'IBMUSER.SQLITE.LOAD(SQLITSO)'
+FREE FI(SQLDB SQLJRN)
+```
+
+Do not run `jcl/define-rrds.jcl` while the interactive client is open: that
+job deletes and recreates both VSAM clusters. The client is a foreground TSO
+program because its input/output wrappers use the TGET and TPUT services; it
+is not intended to run under batch JCL.
 
 ## Create a clean database
 

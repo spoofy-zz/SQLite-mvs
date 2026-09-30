@@ -29,7 +29,7 @@ SQLITE_MVS_CPPFLAGS := \
 	-DSQLITE_MAX_MMAP_SIZE=0 \
 	-DSQLITE_OMIT_AUTOINIT=1
 
-.PHONY: probe probe-c probe-asm probe-link names sdk as370-large clean mbt-build
+.PHONY: probe probe-c probe-asm probe-link tso names sdk as370-large clean mbt-build
 
 sdk:
 	$(MAKE) -C toolchain/cc370 PREFIX=$(SDK_ROOT) install
@@ -67,9 +67,11 @@ $(AS370_LARGE): patches/cc370-as370-large-input.patch
 	@$(MAKE) -C $(BUILDDIR)/tools/cc370 as370/as370
 	@cp $(BUILDDIR)/tools/cc370/as370/as370 $@
 
-probe-asm: $(BUILDDIR)/sqlite3.mvs.s $(AS370_LARGE)
+probe-asm: $(BUILDDIR)/sqlite3.o
+
+$(BUILDDIR)/sqlite3.o: $(BUILDDIR)/sqlite3.mvs.s $(AS370_LARGE)
 	@set -o pipefail; $(AS370_LARGE) -I $(shell dirname $$(command -v $(AS370)))/../cc370/macros \
-		-o $(BUILDDIR)/sqlite3.o $< \
+		-o $@ $< \
 		2>&1 | tee $(BUILDDIR)/as370.log
 
 $(BUILDDIR)/sqlite3_mvs.o: src/sqlite3_mvs.c include/sqlite3_mvs_names.h
@@ -84,6 +86,24 @@ probe-link: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o $(BUILDDIR)/core_lin
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
 		$^ -lc -iebcopy -o $(BUILDDIR)/SQLTTEST
 
+$(BUILDDIR)/sqlite_tso.o: src/sqlite_tso.c include/sqlite3_mvs_names.h
+	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+
+$(BUILDDIR)/tsqtget.o: asm/tsqtget.asm
+	@mkdir -p $(BUILDDIR)
+	$(AS370) -o $@ $<
+
+$(BUILDDIR)/tsqtput.o: asm/tsqtput.asm
+	@mkdir -p $(BUILDDIR)
+	$(AS370) -o $@ $<
+
+tso: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
+		$(BUILDDIR)/sqlite_tso.o $(BUILDDIR)/tsqtget.o $(BUILDDIR)/tsqtput.o
+	$(LD370) -L$(shell dirname $$(command -v $(CC370)))/../cc370/lib \
+		--name SQLITSO -e @@CRT0 \
+		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt0.o \
+		$^ -lc -iebcopy -o $(BUILDDIR)/SQLITSO
+
 # Full MBT integration is intentionally separate from the compiler probe.
 # It becomes the normal build once the amalgamation can produce an object.
 mbt-build:
@@ -92,4 +112,6 @@ mbt-build:
 clean:
 	@rm -f $(BUILDDIR)/sqlite3.raw.s $(BUILDDIR)/sqlite3.mvs.s $(BUILDDIR)/sqlite3.o \
 		$(BUILDDIR)/sqlite3_mvs.o $(BUILDDIR)/core_link.o $(BUILDDIR)/SQLTTEST \
+		$(BUILDDIR)/sqlite_tso.o $(BUILDDIR)/tsqtget.o $(BUILDDIR)/tsqtput.o \
+		$(BUILDDIR)/SQLITSO \
 		$(BUILDDIR)/cc370.log $(BUILDDIR)/as370.log
