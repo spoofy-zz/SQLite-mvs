@@ -113,6 +113,11 @@ abend or `SQLITE API ERROR` message.
 Verified on MVS 3.8j/Turnkey5 as JOB01275: the KICKS step ended `CC 0000` and
 the CRLP screen displayed `1 | P01 | ZAGREB | 21` plus `SEARCH COMPLETE`.
 
+Fixed-width BMS name and city inputs are bound at their full 10-byte length.
+The search SQL applies `RTRIM(?)`, so trailing BMS padding does not prevent an
+exact match (for example, entering `ZAGREB` in the CITY field finds all people
+whose city is `ZAGREB`).
+
 ## Run on TSO
 
 From a clean TSO `READY` prompt:

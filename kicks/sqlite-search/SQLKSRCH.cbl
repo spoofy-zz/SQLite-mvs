@@ -11,11 +11,13 @@
        01  WS-SEARCH-NAME.
            05 FILLER PIC X(36) VALUE
               'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
-           05 FILLER PIC X(24) VALUE 'WHERE NAME=? ORDER BY ID'.
+           05 FILLER PIC X(31) VALUE
+              'WHERE NAME=RTRIM(?) ORDER BY ID'.
        01  WS-SEARCH-CITY.
            05 FILLER PIC X(36) VALUE
               'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
-           05 FILLER PIC X(24) VALUE 'WHERE CITY=? ORDER BY ID'.
+           05 FILLER PIC X(31) VALUE
+              'WHERE CITY=RTRIM(?) ORDER BY ID'.
        01  WS-SEARCH-ALL.
            05 FILLER PIC X(36) VALUE
               'SELECT ID,NAME,CITY,AGE FROM PEOPLE '.
@@ -74,7 +76,7 @@
              TO HDRO.
            IF SRNAMEI NOT = LOW-VALUES AND SRNAMEI NOT = SPACES
                MOVE WS-SEARCH-NAME TO SQLX-SQL
-               MOVE 60 TO SQLX-SQL-LENGTH
+               MOVE 67 TO SQLX-SQL-LENGTH
                MOVE 1 TO SQLX-BIND-COUNT
                MOVE 'T' TO SQLX-BIND-TYPE (1)
                MOVE 10 TO SQLX-BIND-LENGTH (1)
@@ -82,7 +84,7 @@
                GO TO PREPARE-PEOPLE-EXIT.
            IF SRCITYI NOT = LOW-VALUES AND SRCITYI NOT = SPACES
                MOVE WS-SEARCH-CITY TO SQLX-SQL
-               MOVE 60 TO SQLX-SQL-LENGTH
+               MOVE 67 TO SQLX-SQL-LENGTH
                MOVE 1 TO SQLX-BIND-COUNT
                MOVE 'T' TO SQLX-BIND-TYPE (1)
                MOVE 10 TO SQLX-BIND-LENGTH (1)
