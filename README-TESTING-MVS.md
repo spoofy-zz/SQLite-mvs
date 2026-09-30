@@ -66,7 +66,8 @@ SQLite TSO session ended
 
 SQL can span multiple input lines; execution starts when
 `sqlite3_complete()` sees a terminating semicolon. Available shell commands
-are `.help`, `.tables`, `.schema [table]`, `.quit`, and `.exit`.
+are `.help`, `.tables`, `.schema [table]`, `.quit`, and `.exit`. PF3 is an
+immediate exit key; Clear discards a partially entered SQL statement.
 
 To invoke the load module without installing the CLIST, use these commands
 from TSO READY:

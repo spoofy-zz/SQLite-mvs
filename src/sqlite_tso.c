@@ -7,12 +7,50 @@
 
 #define TSO_LINE 2048
 #define TSO_OUT 512
+#define TERM_ENTER 0x7d
+#define TERM_CLEAR 0x6d
+#define TERM_PF3   0xf3
 
 extern int tsqtget(char *buf, int max) asm("TSQTGET");
 extern int tsqtput(char *buf, int len) asm("TSQTPUT");
 
 typedef struct RowOutput RowOutput;
 struct RowOutput { int header; };
+
+static int termAddress(unsigned char first, unsigned char second)
+{
+    return (first & 0xc0) ? ((first & 63) * 64 + (second & 63))
+                          : ((first & 63) * 256 + second);
+}
+
+/* TGET ASIS returns a 3270 Read Modified record, not a plain C string:
+ * AID, cursor address, then one or more SBA/address/text groups. */
+static int termInput(char *out, int capacity, const unsigned char *raw,
+                     int length)
+{
+    int i;
+    int position = -1;
+    int used = 0;
+    if (length < 3 || raw[0] != TERM_ENTER) return -1;
+    for (i = 3; i < length; i++) {
+        if (raw[i] == 0x11) {
+            if (i + 2 >= length) return -1;
+            position = termAddress(raw[i + 1], raw[i + 2]);
+            i += 2;
+            if (used && out[used - 1] != ' ') {
+                if (used >= capacity - 1) return -1;
+                out[used++] = ' ';
+            }
+        } else {
+            if (position < 0 || used >= capacity - 1) return -1;
+            out[used++] = raw[i] ? (char)raw[i] : ' ';
+            position++;
+        }
+    }
+    while (used > 0 && out[used - 1] == ' ') used--;
+    out[used] = '\0';
+    return used;
+}
 
 static void appendText(char *line, int size, int *used, const char *text)
 {
@@ -121,6 +159,7 @@ int main(void)
     sqlite3 *db = 0;
     char line[TSO_LINE];
     char statement[TSO_LINE];
+    unsigned char raw[TSO_LINE];
     int length;
     int rc;
     statement[0] = '\0';
@@ -140,10 +179,27 @@ int main(void)
     for (;;) {
         tsoOut(statement[0] ? "   ...> " : "sqlite> ");
         memset(line, 0, sizeof(line));
-        length = tsqtget(line, sizeof(line));
+        memset(raw, 0, sizeof(raw));
+        length = tsqtget((char *)raw, sizeof(raw));
         if (length < 0) break;
-        if (length >= (int)sizeof(line)) length = sizeof(line) - 1;
-        line[length] = '\0';
+        if (length > 0 && raw[0] == TERM_PF3) break;
+        if (length > 0 && raw[0] == TERM_CLEAR) {
+            statement[0] = '\0';
+            tsoOut("Input cleared; PF3 or .quit exits");
+            continue;
+        }
+        if (length > 0 && raw[0] == TERM_ENTER) {
+            length = termInput(line, sizeof(line), raw, length);
+            if (length < 0) {
+                tsoOut("ERROR: invalid terminal input (PF3 exits)");
+                statement[0] = '\0';
+                continue;
+            }
+        } else {
+            if (length >= (int)sizeof(line)) length = sizeof(line) - 1;
+            memcpy(line, raw, length);
+            line[length] = '\0';
+        }
         if (statement[0] == '\0' && trim(line)[0] == '.') {
             if (dotCommand(db, trim(line))) break;
             continue;
