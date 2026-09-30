@@ -49,25 +49,31 @@ Example session:
 ```text
 sqlite> .tables
 name
+------------------
 smoke
-OK
+1 row
 sqlite> SELECT id,value FROM smoke ORDER BY id DESC LIMIT 2;
-id | value
-2 | MVS RRDS
-1 | MVS RRDS
-OK
+id                  value
+------------------  ------------------
+2                   MVS RRDS
+1                   MVS RRDS
+2 rows
 sqlite> .schema smoke
 sql
+------------------
 CREATE TABLE smoke(id INTEGER PRIMARY KEY, value TEXT)
-OK
+1 row
 sqlite> .quit
 SQLite TSO session ended
 ```
 
 SQL can span multiple input lines; execution starts when
 `sqlite3_complete()` sees a terminating semicolon. Available shell commands
-are `.help`, `.tables`, `.schema [table]`, `.quit`, and `.exit`. PF3 is an
-immediate exit key; Clear discards a partially entered SQL statement.
+include `.help`, `.tables`, `.schema [table]`, `.databases`, `.version`,
+`.headers on|off`, `.mode column|list`, `.quit`, and `.exit`. Column mode is
+the default and underlines its headers; list mode preserves full values and
+separates fields with ` | `. PF3 is an immediate exit key; Clear discards a
+partially entered SQL statement.
 
 To invoke the load module without installing the CLIST, use these commands
 from TSO READY:
