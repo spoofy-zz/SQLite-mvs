@@ -62,12 +62,19 @@ VFS. A two-job test confirmed that `jcl/lock-holder.jcl` can hold
 `BEGIN IMMEDIATE` while the class-B `jcl/lock-probe.jcl` receives the expected
 `SQLITE_BUSY` instead of writing concurrently.
 
+Rollback journals are stored in a second RRDS allocated as DD `SQLJRN`.
+RRN 1 contains VFS metadata and journal byte ranges start at RRN 2. The MVS
+test runs with `journal_mode=DELETE` and `synchronous=FULL`; both committed
+transactions and an explicit rollback (`rollback_rows=0`) pass across
+repeated jobs.
+
 Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
-`SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection. This
-phase deliberately uses `journal_mode=OFF`; rollback-journal storage and crash
-recovery come next.
+`SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection. Hot
+journal crash simulation and recovery validation are the next phase.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
+See `README-TESTING-MVS.md` for build, deployment, smoke, persistence, spool,
+and concurrent-locking test instructions.
 
 ## MBT
 

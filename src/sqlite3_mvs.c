@@ -11,6 +11,8 @@
 
 #define MVS_PAGE_SIZE 4096
 #define MVS_DDNAME "SQLDB"
+#define MVS_JOURNAL_DDNAME "SQLJRN"
+#define MVS_JOURNAL_MAGIC "MVSJRN01"
 #define MVS_LOCK_QNAME "SQLITE"
 #define MVS_LOCK_READ "SQLDB.READ"
 #define MVS_LOCK_WRITE "SQLDB.WRITE"
@@ -22,6 +24,9 @@ struct MvsFile {
     VSFILE *vs;
     sqlite3_int64 size;
     int lock;
+    const char *ddname;
+    unsigned dataRrn;
+    int journal;
 };
 
 static int mvsClose(sqlite3_file *file);
@@ -36,6 +41,8 @@ static int mvsCheckReservedLock(sqlite3_file *file, int *result);
 static int mvsFileControl(sqlite3_file *file, int op, void *arg);
 static int mvsSectorSize(sqlite3_file *file);
 static int mvsDeviceCharacteristics(sqlite3_file *file);
+static int mvsWritePage(MvsFile *file, unsigned rrn,
+                        const unsigned char *page);
 
 static const sqlite3_io_methods mvsIoMethods = {
     1, mvsClose, mvsRead, mvsWrite, mvsTruncate, mvsSync, mvsFileSize,
@@ -49,14 +56,31 @@ static unsigned mvsGet32(const unsigned char *p)
            ((unsigned)p[2] << 8) | (unsigned)p[3];
 }
 
+static void mvsPut32(unsigned char *p, unsigned value)
+{
+    p[0] = (unsigned char)(value >> 24);
+    p[1] = (unsigned char)(value >> 16);
+    p[2] = (unsigned char)(value >> 8);
+    p[3] = (unsigned char)value;
+}
+
 static int mvsReopen(MvsFile *file)
 {
     if (__vsclos(file->vs) != 0) return SQLITE_IOERR_CLOSE;
     file->vs = 0;
-    if (__vsopen(MVS_DDNAME, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
+    if (__vsopen(file->ddname, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
                  &file->vs) != 0 || file->vs == 0)
         return SQLITE_CANTOPEN;
     return SQLITE_OK;
+}
+
+static int mvsWriteJournalMeta(MvsFile *file)
+{
+    unsigned char meta[MVS_PAGE_SIZE];
+    memset(meta, 0, sizeof(meta));
+    memcpy(meta, MVS_JOURNAL_MAGIC, 8);
+    mvsPut32(meta + 8, (unsigned)file->size);
+    return mvsWritePage(file, 1, meta);
 }
 
 static int mvsReadPage(MvsFile *file, unsigned rrn, unsigned char *page)
@@ -116,7 +140,7 @@ static int mvsRead(sqlite3_file *base, void *out, int amount, sqlite3_int64 offs
     int remaining = amount;
     int shortRead = 0;
     while (remaining > 0) {
-        unsigned rrn = (unsigned)(offset / MVS_PAGE_SIZE) + 1;
+        unsigned rrn = (unsigned)(offset / MVS_PAGE_SIZE) + file->dataRrn;
         int within = (int)(offset % MVS_PAGE_SIZE);
         int chunk = MVS_PAGE_SIZE - within;
         if (chunk > remaining) chunk = remaining;
@@ -138,7 +162,7 @@ static int mvsWrite(sqlite3_file *base, const void *in, int amount,
     sqlite3_int64 end = offset + amount;
     int remaining = amount;
     while (remaining > 0) {
-        unsigned rrn = (unsigned)(offset / MVS_PAGE_SIZE) + 1;
+        unsigned rrn = (unsigned)(offset / MVS_PAGE_SIZE) + file->dataRrn;
         int within = (int)(offset % MVS_PAGE_SIZE);
         int chunk = MVS_PAGE_SIZE - within;
         if (chunk > remaining) chunk = remaining;
@@ -154,6 +178,8 @@ static int mvsWrite(sqlite3_file *base, const void *in, int amount,
         remaining -= chunk;
     }
     if (end > file->size) file->size = end;
+    if (file->journal && mvsWriteJournalMeta(file) != SQLITE_OK)
+        return SQLITE_IOERR_WRITE;
     return SQLITE_OK;
 }
 
@@ -164,11 +190,12 @@ static int mvsTruncate(sqlite3_file *base, sqlite3_int64 size)
     unsigned newPages;
     unsigned char page[MVS_PAGE_SIZE];
     unsigned rrn;
-    if (size < 0 || (size % MVS_PAGE_SIZE) != 0)
+    if (size < 0 || (!file->journal && (size % MVS_PAGE_SIZE) != 0))
         return SQLITE_IOERR_TRUNCATE;
-    oldPages = (unsigned)(file->size / MVS_PAGE_SIZE);
-    newPages = (unsigned)(size / MVS_PAGE_SIZE);
-    for (rrn = oldPages; rrn > newPages; rrn--) {
+    oldPages = (unsigned)((file->size + MVS_PAGE_SIZE - 1) / MVS_PAGE_SIZE);
+    newPages = (unsigned)((size + MVS_PAGE_SIZE - 1) / MVS_PAGE_SIZE);
+    for (rrn = oldPages + file->dataRrn - 1;
+         rrn > newPages + file->dataRrn - 1; rrn--) {
         if (mvsReadPage(file, rrn, page)) {
             if (__vsdel(file->vs, page, MVS_PAGE_SIZE) != 0) {
                 __vsclr(file->vs);
@@ -177,11 +204,18 @@ static int mvsTruncate(sqlite3_file *base, sqlite3_int64 size)
         }
     }
     file->size = size;
+    if (file->journal && mvsWriteJournalMeta(file) != SQLITE_OK)
+        return SQLITE_IOERR_TRUNCATE;
     return SQLITE_OK;
 }
 
 static int mvsSync(sqlite3_file *base, int flags)
-{ (void)base; (void)flags; return SQLITE_OK; }
+{
+    MvsFile *file = (MvsFile *)base;
+    (void)flags;
+    if (file->journal) return mvsWriteJournalMeta(file);
+    return SQLITE_OK;
+}
 
 static int mvsFileSize(sqlite3_file *base, sqlite3_int64 *size)
 { *size = ((MvsFile *)base)->size; return SQLITE_OK; }
@@ -297,27 +331,91 @@ static int mvsOpen(sqlite3_vfs *vfs, const char *name, sqlite3_file *base,
     MvsFile *file = (MvsFile *)base;
     unsigned char first[MVS_PAGE_SIZE];
     int rc;
-    (void)vfs; (void)name;
+    (void)vfs;
     memset(file, 0, sizeof(*file));
-    if ((flags & SQLITE_OPEN_MAIN_DB) == 0) return SQLITE_CANTOPEN;
-    rc = __vsopen(MVS_DDNAME, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
+    if (flags & SQLITE_OPEN_MAIN_DB) {
+        file->ddname = MVS_DDNAME;
+        file->dataRrn = 1;
+    } else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
+        file->ddname = MVS_JOURNAL_DDNAME;
+        file->dataRrn = 2;
+        file->journal = 1;
+    } else {
+        return SQLITE_CANTOPEN;
+    }
+    rc = __vsopen(file->ddname, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
                   &file->vs);
     if (rc != 0 || file->vs == 0) return SQLITE_CANTOPEN;
     file->base.pMethods = &mvsIoMethods;
-    if (mvsReadPage(file, 1, first) &&
-        memcmp(first, "SQLite format 3\000", 16) == 0)
-        file->size = (sqlite3_int64)mvsGet32(first + 28) * MVS_PAGE_SIZE;
+    if (mvsReadPage(file, 1, first)) {
+        if (file->journal && memcmp(first, MVS_JOURNAL_MAGIC, 8) == 0)
+            file->size = (sqlite3_int64)mvsGet32(first + 8);
+        else if (!file->journal &&
+                 memcmp(first, "SQLite format 3\000", 16) == 0)
+            file->size = (sqlite3_int64)mvsGet32(first + 28) * MVS_PAGE_SIZE;
+    } else if (file->journal && (flags & SQLITE_OPEN_CREATE)) {
+        if (mvsWriteJournalMeta(file) != SQLITE_OK) {
+            mvsClose(base);
+            return SQLITE_CANTOPEN;
+        }
+    }
     if (outFlags) *outFlags = flags;
     return SQLITE_OK;
 }
 
 static int mvsDelete(sqlite3_vfs *vfs, const char *name, int syncDir)
-{ (void)vfs; (void)name; (void)syncDir; return SQLITE_IOERR_DELETE; }
+{
+    MvsFile file;
+    unsigned char page[MVS_PAGE_SIZE];
+    unsigned pages;
+    unsigned rrn;
+    int rc;
+    (void)vfs; (void)syncDir;
+    if (!name || strstr(name, "-journal") == 0) return SQLITE_IOERR_DELETE;
+    memset(&file, 0, sizeof(file));
+    file.ddname = MVS_JOURNAL_DDNAME;
+    file.dataRrn = 2;
+    file.journal = 1;
+    rc = __vsopen(file.ddname, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
+                  &file.vs);
+    if (rc != 0 || file.vs == 0) return SQLITE_IOERR_DELETE;
+    if (mvsReadPage(&file, 1, page) &&
+        memcmp(page, MVS_JOURNAL_MAGIC, 8) == 0)
+        file.size = (sqlite3_int64)mvsGet32(page + 8);
+    pages = (unsigned)((file.size + MVS_PAGE_SIZE - 1) / MVS_PAGE_SIZE);
+    for (rrn = pages + 1; rrn > 0; rrn--) {
+        if (mvsReadPage(&file, rrn, page) &&
+            __vsdel(file.vs, page, MVS_PAGE_SIZE) != 0) {
+            __vsclos(file.vs);
+            return SQLITE_IOERR_DELETE;
+        }
+    }
+    rc = __vsclos(file.vs);
+    return rc == 0 ? SQLITE_OK : SQLITE_IOERR_DELETE;
+}
 
 static int mvsAccess(sqlite3_vfs *vfs, const char *name, int flags, int *result)
 {
+    VSFILE *vs = 0;
+    unsigned char meta[MVS_PAGE_SIZE];
+    int key = 1;
+    int rc;
     (void)vfs; (void)flags;
-    *result = name != 0 && strcmp(name, MVS_DDNAME) == 0;
+    *result = 0;
+    if (name && strstr(name, "-journal") != 0) {
+        rc = __vsopen(MVS_JOURNAL_DDNAME, VSTYPE_RRDS, VSACCESS_DIR,
+                      VSMODE_UPD, &vs);
+        if (rc == 0 && vs != 0) {
+            rc = __vsread(vs, meta, sizeof(meta), &key, sizeof(key));
+            if (rc == MVS_PAGE_SIZE &&
+                memcmp(meta, MVS_JOURNAL_MAGIC, 8) == 0 &&
+                mvsGet32(meta + 8) != 0)
+                *result = 1;
+            __vsclos(vs);
+        }
+    } else if (name && strcmp(name, MVS_DDNAME) == 0) {
+        *result = 1;
+    }
     return SQLITE_OK;
 }
 

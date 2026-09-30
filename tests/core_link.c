@@ -15,6 +15,12 @@ static int printRow(void *unused, int columns, char **values, char **names)
     return 0;
 }
 
+static int verifyZero(void *unused, int columns, char **values, char **names)
+{
+    printRow(unused, columns, values, names);
+    return columns != 1 || values[0] == 0 || strcmp(values[0], "0") != 0;
+}
+
 static int runSql(sqlite3 *db, const char *label, const char *sql,
                   sqlite3_callback callback)
 {
@@ -73,8 +79,8 @@ int main(int argc, char **argv)
     else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "PROBE") == 0)
         rc = runLockTest(db, 0);
     else {
-    if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=OFF;", 0);
-    if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=OFF;", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=DELETE;", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=FULL;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "auto-vacuum", "PRAGMA auto_vacuum=FULL;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "create",
         "CREATE TABLE IF NOT EXISTS smoke(id INTEGER PRIMARY KEY,value TEXT);", 0);
@@ -86,6 +92,11 @@ int main(int argc, char **argv)
         "DELETE FROM smoke WHERE typeof(value)='blob';", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "insert",
         "INSERT INTO smoke(value) VALUES('MVS RRDS');", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "rollback-write",
+        "BEGIN; INSERT INTO smoke(value) VALUES('MUST ROLLBACK'); ROLLBACK;", 0);
+    if (rc == SQLITE_OK) rc = runSql(db, "rollback-check",
+        "SELECT count(*) AS rollback_rows FROM smoke "
+        "WHERE value='MUST ROLLBACK';", verifyZero);
     if (rc == SQLITE_OK) rc = runSql(db, "shrunk-pages",
         "PRAGMA page_count;", printRow);
     if (rc == SQLITE_OK) rc = runSql(db, "select",
