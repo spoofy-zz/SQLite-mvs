@@ -3,15 +3,22 @@
 
 from pathlib import Path
 import re
+import argparse
 
 
 ROOT = Path(__file__).resolve().parents[1]
-HEADER = ROOT / "vendor/sqlite/sqlite3.h"
-OUTPUT = ROOT / "include/sqlite3_mvs_names.h"
+DEFAULT_HEADER = ROOT / "vendor/sqlite/sqlite3.h"
+DEFAULT_OUTPUT = ROOT / "include/sqlite3_mvs_names.h"
 
 
 def main() -> None:
-    text = HEADER.read_text(encoding="utf-8")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--header", type=Path, default=DEFAULT_HEADER)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    args = parser.parse_args()
+    header = args.header.resolve()
+    output = args.output.resolve()
+    text = header.read_text(encoding="utf-8")
     statements = re.findall(r"\bSQLITE_API\b.*?;", text, flags=re.DOTALL)
     names = {"sqlite3_os_init", "sqlite3_os_end"}
     for statement in statements:
@@ -38,8 +45,13 @@ def main() -> None:
     for number, name in enumerate(sorted(names), start=1):
         lines.append(f"#define {name} SQ{number:06d}")
     lines.extend(["", "#endif", ""])
-    OUTPUT.write_text("\n".join(lines), encoding="ascii")
-    print(f"generated {OUTPUT.relative_to(ROOT)} with {len(names)} aliases")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("\n".join(lines), encoding="ascii")
+    try:
+        shown = output.relative_to(ROOT)
+    except ValueError:
+        shown = output
+    print(f"generated {shown} with {len(names)} aliases")
 
 
 if __name__ == "__main__":

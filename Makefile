@@ -3,9 +3,13 @@ include .env
 endif
 
 SQLITE_VERSION := 3.8.11.1
-SQLITE_SRC := vendor/sqlite/sqlite3.c
-BUILDDIR := build
-SDK_ROOT := $(abspath $(BUILDDIR)/sdk)
+SQLITE_SRC ?= vendor/sqlite/sqlite3.c
+SQLITE_HEADER ?= vendor/sqlite/sqlite3.h
+SQLITE_INCLUDE_DIR ?= $(dir $(SQLITE_HEADER))
+NAMES_HEADER ?= include/sqlite3_mvs_names.h
+BUILDDIR ?= build
+LOAD_MODULE ?= SQLTTEST
+SDK_ROOT ?= $(abspath build/sdk)
 ifneq (,$(wildcard $(SDK_ROOT)/bin/cc370))
 CC370 ?= $(SDK_ROOT)/bin/cc370
 AS370 ?= $(SDK_ROOT)/bin/as370
@@ -18,18 +22,23 @@ endif
 AS370_LARGE ?= $(BUILDDIR)/tools/as370
 CC370_SOURCE ?= toolchain/cc370
 
-SQLITE_MVS_CPPFLAGS := \
-	-DSQLITE_OS_OTHER=1 \
-	-DSQLITE_THREADSAFE=0 \
-	-DSQLITE_OMIT_LOAD_EXTENSION=1 \
-	-DSQLITE_OMIT_WAL=1 \
-	-DSQLITE_TEMP_STORE=3 \
-	-DSQLITE_DEFAULT_PAGE_SIZE=4096 \
-	-DSQLITE_MAX_DEFAULT_PAGE_SIZE=4096 \
-	-DSQLITE_MAX_MMAP_SIZE=0 \
-	-DSQLITE_OMIT_AUTOINIT=1
+SQLITE_MVS_CPPFLAGS := -include include/sqlite3_mvs_compat.h \
+	-include $(NAMES_HEADER)
 
-.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge names sdk as370-large clean mbt-build
+.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge names sdk as370-large clean mbt-build upgrade-probe-c upgrade-probe upgrade-matrix
+
+UPGRADE_VERSION ?= 3.15.2
+
+upgrade-probe-c:
+	tools/probe_sqlite_upgrade.sh $(UPGRADE_VERSION) c
+
+upgrade-probe:
+	tools/probe_sqlite_upgrade.sh $(UPGRADE_VERSION) full
+
+upgrade-matrix:
+	@for version in 3.15.2 3.22.0 3.31.1 3.35.5 3.37.2; do \
+		tools/probe_sqlite_upgrade.sh $$version full || exit $$?; \
+	done
 
 sdk:
 	$(MAKE) -C toolchain/cc370 PREFIX=$(SDK_ROOT) install
@@ -39,17 +48,17 @@ sdk:
 # can consume and preserve complete diagnostics for comparison.
 probe: probe-c probe-asm probe-link
 
-names: include/sqlite3_mvs_names.h
+names: $(NAMES_HEADER)
 
-include/sqlite3_mvs_names.h: vendor/sqlite/sqlite3.h tools/gen_mvs_names.py
-	python3 tools/gen_mvs_names.py
+$(NAMES_HEADER): $(SQLITE_HEADER) tools/gen_mvs_names.py
+	python3 tools/gen_mvs_names.py --header $(SQLITE_HEADER) --output $@
 
 probe-c: $(BUILDDIR)/sqlite3.mvs.s
 
-$(BUILDDIR)/sqlite3.raw.s: $(SQLITE_SRC) include/sqlite3_mvs_names.h
+$(BUILDDIR)/sqlite3.raw.s: $(SQLITE_SRC) $(NAMES_HEADER) include/sqlite3_mvs_compat.h
 	@mkdir -p $(BUILDDIR)
 	@set -o pipefail; $(CC370) -std=gnu89 -O1 $(SQLITE_MVS_CPPFLAGS) \
-		-include include/sqlite3_mvs_names.h -S $< -o $@ \
+		-S $< -o $@ \
 		2>&1 | tee $(BUILDDIR)/cc370.log
 
 $(BUILDDIR)/sqlite3.mvs.s: $(BUILDDIR)/sqlite3.raw.s tools/shorten_cc370_labels.py
@@ -74,17 +83,17 @@ $(BUILDDIR)/sqlite3.o: $(BUILDDIR)/sqlite3.mvs.s $(AS370_LARGE)
 		-o $@ $< \
 		2>&1 | tee $(BUILDDIR)/as370.log
 
-$(BUILDDIR)/sqlite3_mvs.o: src/sqlite3_mvs.c include/sqlite3_mvs_names.h
-	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+$(BUILDDIR)/sqlite3_mvs.o: src/sqlite3_mvs.c $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
-$(BUILDDIR)/core_link.o: tests/core_link.c include/sqlite3_mvs_names.h
-	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+$(BUILDDIR)/core_link.o: tests/core_link.c $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
 probe-link: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o $(BUILDDIR)/core_link.o
 	$(LD370) -L$(shell dirname $$(command -v $(CC370)))/../cc370/lib \
-		--name SQLTTEST -e @@CRT0 \
+		--name $(LOAD_MODULE) -e @@CRT0 \
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
-		$^ -lc -iebcopy -o $(BUILDDIR)/SQLTTEST
+		$^ -lc -iebcopy -o $(BUILDDIR)/$(LOAD_MODULE)
 
 $(BUILDDIR)/sqlite_tso.o: src/sqlite_tso.c include/sqlite3_mvs_names.h
 	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@

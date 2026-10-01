@@ -184,6 +184,59 @@ static int suiteSql(sqlite3 *db, const char *label, const char *sql)
     return rc;
 }
 
+static int runModernSuite(sqlite3 *db)
+{
+    char *error = 0;
+    int version = sqlite3_libversion_number();
+    int rc = SQLITE_OK;
+    printf("suite modern version=%d\n", version);
+    if (version >= 3024000) {
+        rc = suiteSql(db, "upsert-setup",
+            "DROP TABLE IF EXISTS ts_modern; CREATE TABLE ts_modern("
+            "id INTEGER PRIMARY KEY,value INTEGER);"
+            "INSERT INTO ts_modern VALUES(1,10);"
+            "INSERT INTO ts_modern VALUES(1,20) ON CONFLICT(id) "
+            "DO UPDATE SET value=excluded.value;");
+        if (rc == SQLITE_OK) rc = expectValue(db, "upsert",
+            "SELECT value FROM ts_modern WHERE id=1;", "20");
+    }
+    if (rc == SQLITE_OK && version >= 3025000)
+        rc = expectValue(db, "window",
+            "SELECT row_number() OVER (ORDER BY id) FROM ts_modern "
+            "WHERE id=1;", "1");
+    if (rc == SQLITE_OK && version >= 3031000) {
+        rc = suiteSql(db, "generated-setup",
+            "DROP TABLE ts_modern; CREATE TABLE ts_modern("
+            "value INTEGER,doubled INTEGER GENERATED ALWAYS AS "
+            "(value*2) STORED); INSERT INTO ts_modern(value) VALUES(7);");
+        if (rc == SQLITE_OK) rc = expectValue(db, "generated",
+            "SELECT doubled FROM ts_modern;", "14");
+    }
+    if (rc == SQLITE_OK && version >= 3035000)
+        rc = expectValue(db, "returning",
+            "INSERT INTO ts_modern(value) VALUES(9) RETURNING value;", "9");
+    if (rc == SQLITE_OK && version >= 3037000) {
+        rc = suiteSql(db, "strict-setup",
+            "DROP TABLE ts_modern; CREATE TABLE ts_modern(value INTEGER) "
+            "STRICT;");
+        if (rc == SQLITE_OK) {
+            rc = sqlite3_exec(db,
+                "INSERT INTO ts_modern VALUES('not-an-integer');",
+                0, 0, &error);
+            printf("suite %-18s rc=%d expected=%d %s%s%s\n", "strict", rc,
+                   SQLITE_CONSTRAINT,
+                   rc == SQLITE_CONSTRAINT ? "PASS" : "FAIL",
+                   error ? " error=" : "", error ? error : "");
+            if (error) sqlite3_free(error);
+            error = 0;
+            rc = rc == SQLITE_CONSTRAINT ? SQLITE_OK : SQLITE_ERROR;
+        }
+    }
+    if (rc == SQLITE_OK && version >= 3024000)
+        rc = suiteSql(db, "modern-cleanup", "DROP TABLE ts_modern;");
+    return rc;
+}
+
 static int runSuite(sqlite3 *db)
 {
     char *error = 0;
@@ -251,6 +304,7 @@ static int runSuite(sqlite3 *db)
         "PRAGMA integrity_check;", "ok");
     if (rc == SQLITE_OK) rc = suiteSql(db, "foreign-key-check",
         "PRAGMA foreign_key_check;");
+    if (rc == SQLITE_OK) rc = runModernSuite(db);
     printf("SQLITE MVS TEST SUITE %s\n", rc == SQLITE_OK ? "PASSED" : "FAILED");
     return rc;
 }

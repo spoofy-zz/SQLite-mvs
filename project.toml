@@ -8,16 +8,8 @@ cflags = [
   "-std=gnu89",
   "-O0",
   "-I", "vendor/sqlite",
+  "-include", "include/sqlite3_mvs_compat.h",
   "-include", "include/sqlite3_mvs_names.h",
-  "-DSQLITE_OS_OTHER=1",
-  "-DSQLITE_THREADSAFE=0",
-  "-DSQLITE_OMIT_LOAD_EXTENSION=1",
-  "-DSQLITE_OMIT_WAL=1",
-  "-DSQLITE_TEMP_STORE=3",
-  "-DSQLITE_DEFAULT_PAGE_SIZE=4096",
-  "-DSQLITE_MAX_DEFAULT_PAGE_SIZE=4096",
-  "-DSQLITE_MAX_MMAP_SIZE=0",
-  "-DSQLITE_OMIT_AUTOINIT=1",
 ]
 
 [[module]]

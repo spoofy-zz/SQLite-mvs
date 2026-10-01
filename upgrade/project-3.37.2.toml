@@ -1,0 +1,16 @@
+[project]
+name = "sqlite-mvs-337-candidate"
+version = "3.37.2"
+type = "application"
+
+[[module]]
+name = "SQLT372"
+entry = "@@CRT0"
+startup = "crt1"
+sources = []
+
+[deploy]
+target = "IBMUSER.SQLITE.D372.LOAD"
+
+[artifacts]
+loads = true
