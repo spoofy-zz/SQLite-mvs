@@ -125,7 +125,8 @@ zowe zos-files upload file-to-data-set clist/SQLKICKS.clist \
 ```
 
 `SQLITE` and `SQL534` open `D534DB`; `TESTDB` opens the separate KICKS sample.
-`SQLITADM` also allocates the backup RRDS pair.
+`SQLITADM` also allocates the backup RRDS pair and uses the distinct
+`sqlitadm>` prompt.
 
 ### 5. Build and install the KICKS application
 

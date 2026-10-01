@@ -918,7 +918,7 @@ static int runScript(sqlite3 *db, ShellState *shell, FILE *input)
     return 0;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
     sqlite3 *db = 0;
     char line[TSO_LINE];
@@ -928,8 +928,12 @@ int main(void)
     unsigned char raw[TSO_LINE];
     int length;
     int rc;
+    int adminMode;
     int recallActive = 0;
+    const char *primaryPrompt;
     ShellState shell;
+    adminMode = argc > 1 && equalIgnoreCase(argv[1], "ADMIN");
+    primaryPrompt = adminMode ? "sqlitadm> " : "sqlite> ";
     resetShell(&shell);
     statement[0] = '\0';
     lastCommand[0] = '\0';
@@ -946,10 +950,11 @@ int main(void)
     executeSql(db, &shell,
                "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL;");
     tsoOut("SQLite %s for MVS TSO", sqlite3_libversion());
+    if (adminMode) tsoOut("Administrative mode: backup and restore enabled");
     tsoOut("Use .help for commands");
     for (;;) {
         if (!recallActive)
-            terminalOut(statement[0] ? "   ...> " : "sqlite> ");
+            terminalOut(statement[0] ? "   ...> " : primaryPrompt);
         memset(line, 0, sizeof(line));
         memset(raw, 0, sizeof(raw));
         length = tsqtget((char *)raw, sizeof(raw));

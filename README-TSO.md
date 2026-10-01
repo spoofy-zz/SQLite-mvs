@@ -224,6 +224,9 @@ SQLBAK -> IBMUSER.SQLITE.D534BAK
 SQLBJR -> IBMUSER.SQLITE.D534BJR
 ```
 
+The administrative shell uses the distinct `sqlitadm>` prompt and prints an
+administrative-mode banner, while the regular launcher keeps `sqlite>`.
+
 Then use:
 
 ```text
