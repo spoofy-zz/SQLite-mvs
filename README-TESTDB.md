@@ -26,6 +26,8 @@ testdb seed rc=0 people=20 orders=60
 suite testdb-people      rc=0 expected=20 seen=1 PASS
 suite testdb-orders      rc=0 expected=60 seen=1 PASS
 suite testdb-three-each  rc=0 expected=20 seen=1 PASS
+suite testdb-first-name  rc=0 expected=ANA HORVAT seen=1 PASS
+suite testdb-last-name   rc=0 expected=MARIO KOS seen=1 PASS
 SQLITE TESTDB CREATED
 ```
 
@@ -88,5 +90,6 @@ CREATE TABLE orders(
 CREATE INDEX orders_people ON orders(people_id);
 ```
 
-People are named `P01` through `P20`. Cities rotate through Zagreb, Split,
-Rijeka, Osijek, and Pula. Each person has BOOK, PEN, and MUG order rows.
+The 20 rows use human names from `ANA HORVAT` through `MARIO KOS`. Cities
+rotate through Zagreb, Split, Rijeka, Osijek, and Pula. Each person has BOOK,
+PEN, and MUG order rows.

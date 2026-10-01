@@ -20,11 +20,11 @@ Start transaction `SQLS`. Enter either a name or a city:
 ```text
                    *** SQLITE PEOPLE SEARCH FOR KICKS ***
 
-  NAME:  P01               CITY:
+  NAME:  ANA               CITY:
 
  ID | NAME | CITY | AGE
  ----------------------------------------
- 1 | P01 | ZAGREB | 21
+ 1 | ANA HORVAT | ZAGREB | 21
 
  ENTER=SEARCH  PF4=CLEAR  PF3=EXIT
 ```
@@ -37,8 +37,8 @@ Start transaction `SQLS`. Enter either a name or a city:
 - `PF3` leaves the transaction and returns to KICKS.
 
 The search matches from the beginning after trimming the ten-character input
-field. For example, `P0` finds `P01` through `P09`, while `ZAG` finds people
-in `ZAGREB`. Blank filters page through all people in ID order.
+field. For example, `ANA` finds `ANA HORVAT`, while `ZAG` finds people in
+`ZAGREB`. Blank filters page through all people in ID order.
 
 The screen does not concatenate BMS input into SQL. Name, city, and ID values
 are passed through `sqlite3_bind_text`/`sqlite3_bind_int64` by `SQLITEX`.
@@ -127,15 +127,10 @@ For a non-interactive runtime check, submit `TEST.jcl` and inspect its
 `CRLPOUT` spool file. It verifies page 1, PF8 page 2, the end-of-results PF8
 boundary, PF7 back to page 1, PF4 clear, and PF5 orders for person 1.
 
-Verified on MVS 3.8j/Turnkey5 as JOB01275: the KICKS step ended `CC 0000` and
-the CRLP screen displayed `1 | P01 | ZAGREB | 21` plus `SEARCH COMPLETE`.
-Paging and its last-page boundary were verified as JOB01317 (`CC 0000`): page
-1 displayed P01-P10, page 2 displayed P11-P20, and an additional PF8 remained
-on page 2.
-
-The direct `SQLD` detail path was verified as JOB01327 (`CC 0000`). The PF6
-transition from `SQLS` to `SQLD` was verified as JOB01329 (`CC 0000`). Person
-1 loaded as `P01 | ZAGREB | 21` with orders 101/BOOK, 102/PEN, and 103/MUG.
+The human-name seed and complete KICKS path were verified on MVS 3.8j/Turnkey5
+as JOB01365 (`CC 0000`). Page 1 displayed people 1-10, page 2 displayed people
+11-20, the last-page boundary and PF7 return worked, and person 1 loaded as
+`ANA HORVAT | ZAGREB | 21` with orders 101/BOOK, 102/PEN, and 103/MUG.
 
 ## Person detail and CRUD
 

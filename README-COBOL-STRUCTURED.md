@@ -47,5 +47,6 @@ Build with `make cobol-api-x cobol-bridge`. Normal MBT deployment installs
 `SQLITEX`; the combined `sqliteabr.o` bridge now exports both `SQLITEA` and
 `SQLITEX`. `jcl/cobol-api-x-test.jcl` is the executable example.
 
-Verified on MVS 3.8j as JOB01294: four `ZAGREB` rows, three columns, typed
-first row `1 / P01 / ZAGREB`, and execution RC 0000.
+Verified on MVS 3.8j as JOB01366: four `ZAGREB` rows, three columns, typed
+first row `1 / ANA HORVAT / ZAGREB`, compile CC 0004 (warning), and execution
+CC 0000.

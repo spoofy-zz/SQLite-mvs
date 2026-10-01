@@ -338,6 +338,25 @@ static int runSeedTestdb(sqlite3 *db)
     static const char *cities[] = {
         "ZAGREB", "SPLIT", "RIJEKA", "OSIJEK", "PULA"
     };
+    static const char *names[] = {
+        "ANA HORVAT", "IVAN KOVAC", "EMA BABIC", "LUKA MARIC",
+        "IVA NOVAK", "MARKO ILIC", "SARA JURIC", "NIKO BASIC",
+        "MIA PERIC", "LEA BOZIC", "TONI SARIC", "LANA VIDIC",
+        "JOSIP ZEC", "PETRA KNEZ", "FILIP VUK", "DORA GRGIC",
+        "ANTE ROGIC", "NINA POLIC", "MATE RAKIC", "MARIO KOS"
+    };
+    static const char *emails[] = {
+        "ANA.HORVAT@EXAMPLE", "IVAN.KOVAC@EXAMPLE",
+        "EMA.BABIC@EXAMPLE", "LUKA.MARIC@EXAMPLE",
+        "IVA.NOVAK@EXAMPLE", "MARKO.ILIC@EXAMPLE",
+        "SARA.JURIC@EXAMPLE", "NIKO.BASIC@EXAMPLE",
+        "MIA.PERIC@EXAMPLE", "LEA.BOZIC@EXAMPLE",
+        "TONI.SARIC@EXAMPLE", "LANA.VIDIC@EXAMPLE",
+        "JOSIP.ZEC@EXAMPLE", "PETRA.KNEZ@EXAMPLE",
+        "FILIP.VUK@EXAMPLE", "DORA.GRGIC@EXAMPLE",
+        "ANTE.ROGIC@EXAMPLE", "NINA.POLIC@EXAMPLE",
+        "MATE.RAKIC@EXAMPLE", "MARIO.KOS@EXAMPLE"
+    };
     static const char *items[] = { "BOOK", "PEN", "MUG" };
     char sql[256];
     int person;
@@ -355,8 +374,9 @@ static int runSeedTestdb(sqlite3 *db)
         "CREATE INDEX orders_people ON orders(people_id); BEGIN;");
     for (person = 1; rc == SQLITE_OK && person <= 20; person++) {
         snprintf(sql, sizeof(sql),
-            "INSERT INTO people VALUES(%d,'P%02d','%s',%d,'P%02d@EXAMPLE');",
-            person, person, cities[(person - 1) % 5], person + 20, person);
+            "INSERT INTO people VALUES(%d,'%s','%s',%d,'%s');",
+            person, names[person - 1], cities[(person - 1) % 5],
+            person + 20, emails[person - 1]);
         rc = sqlite3_exec(db, sql, 0, 0, 0);
         for (item = 0; rc == SQLITE_OK && item < 3; item++) {
             snprintf(sql, sizeof(sql),
@@ -376,6 +396,10 @@ static int runSeedTestdb(sqlite3 *db)
     if (rc == SQLITE_OK) rc = expectValue(db, "testdb-three-each",
         "SELECT count(*) FROM (SELECT people_id FROM orders GROUP BY "
         "people_id HAVING count(*)=3);", "20");
+    if (rc == SQLITE_OK) rc = expectValue(db, "testdb-first-name",
+        "SELECT name FROM people WHERE id=1;", "ANA HORVAT");
+    if (rc == SQLITE_OK) rc = expectValue(db, "testdb-last-name",
+        "SELECT name FROM people WHERE id=20;", "MARIO KOS");
     printf("SQLITE TESTDB %s\n", rc == SQLITE_OK ? "CREATED" : "FAILED");
     return rc;
 }
