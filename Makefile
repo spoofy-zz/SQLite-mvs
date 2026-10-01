@@ -26,9 +26,24 @@ CC370_SOURCE ?= toolchain/cc370
 SQLITE_MVS_CPPFLAGS := -include include/sqlite3_mvs_compat.h \
 	-include $(NAMES_HEADER)
 
-.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge stack names sdk as370-large clean mbt-build upgrade-probe-c upgrade-probe upgrade-matrix
+.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge stack names sdk as370-large clean mbt-build upgrade-probe-c upgrade-probe upgrade-matrix kicks-sql-precompile test-precompiler
 
 UPGRADE_VERSION ?= 3.15.2
+
+kicks-sql-precompile: kicks/sqlite-search/generated/SQLKDETL.cbl \
+		tests/generated/exec_sql_api_test.cbl
+
+kicks/sqlite-search/generated/SQLKDETL.cbl: \
+		kicks/sqlite-search/SQLKDETL.cbl tools/sqlite_cobol_precompile.py \
+		api/SQLITEX.cpy api/SQLISQLC.cpy
+	python3 tools/sqlite_cobol_precompile.py $< $@
+
+tests/generated/exec_sql_api_test.cbl: tests/exec_sql_api_test.cbl \
+		tools/sqlite_cobol_precompile.py api/SQLITEX.cpy api/SQLISQLC.cpy
+	python3 tools/sqlite_cobol_precompile.py $< $@
+
+test-precompiler:
+	python3 tests/test_sqlite_cobol_precompile.py
 
 upgrade-probe-c:
 	tools/probe_sqlite_upgrade.sh $(UPGRADE_VERSION) c

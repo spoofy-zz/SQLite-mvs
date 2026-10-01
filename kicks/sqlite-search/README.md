@@ -3,7 +3,9 @@
 This sample is a small KICKS application that calls the SQLite MVS COBOL API.
 It searches the `people` table in `IBMUSER.SQLITE.TESTDB` by name or city
 prefix, displays ten people per page, and displays a person's orders by ID.
-It uses typed `SQLITEX` binds and result cells.
+It uses typed `SQLITEX` binds and result cells. The detail/CRUD program is now
+written with `EXEC SQL` for its single-row SELECT, INSERT, UPDATE, and DELETE
+operations; the host precompiler generates the corresponding `SQLITEX` calls.
 
 The application is validated with the current SQLite **3.53.4** stack. Use
 `SQLKICKS` to start it.
@@ -51,7 +53,8 @@ PF5 for person 1 displayed orders 101/BOOK, 102/PEN, and 103/MUG.
 | `SQLKMAP.bms` | 24x80 BMS map `SQLKSRH` in mapset `SQLKMAP` |
 | `SQLKSRCH.cbl` | KICKS search program and typed `SQLITEX` integration |
 | `SQLDMAP.bms` | Person detail/edit BMS map `SQLDETL` |
-| `SQLKDETL.cbl` | Person detail, orders display, and CRUD program |
+| `SQLKDETL.cbl` | Editable person detail/CRUD source with `EXEC SQL` |
+| `generated/SQLKDETL.cbl` | Precompiled fixed-format source consumed by MVS |
 | `SETUP.jcl` | Creates the source and application load libraries |
 | `MAP.jcl` | Assembles the physical map and creates the COBOL copybook |
 | `BUILD.jcl` | Translates, compiles, and links `SQLKSRCH` with the API bridge |
@@ -77,7 +80,14 @@ zowe zos-jobs submit local-file kicks/sqlite-search/SETUP.jcl \
   --zosmf-profile hercules --wait-for-output
 ```
 
-Upload the map and source, then build them in this order:
+Precompile the embedded SQL first:
+
+```sh
+make kicks-sql-precompile test-precompiler
+```
+
+Upload the maps, ordinary search source, generated detail source, and both API
+copybooks, then build them in this order:
 
 ```sh
 zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKMAP.bms \
@@ -86,10 +96,13 @@ zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKSRCH.cbl \
   'IBMUSER.SQLITE.SOURCE(SQLKSRCH)' --zosmf-profile hercules
 zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLDMAP.bms \
   'IBMUSER.SQLITE.SOURCE(SQLDMAP)' --zosmf-profile hercules
-zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKDETL.cbl \
+zowe zos-files upload file-to-data-set \
+  kicks/sqlite-search/generated/SQLKDETL.cbl \
   'IBMUSER.SQLITE.SOURCE(SQLKDETL)' --zosmf-profile hercules
 zowe zos-files upload file-to-data-set api/SQLITEX.cpy \
   'KICKS.KICKS.V1R5M0.COBCOPY(SQLITEX)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set api/SQLISQLC.cpy \
+  'KICKS.KICKS.V1R5M0.COBCOPY(SQLISQLC)' --zosmf-profile hercules
 
 zowe zos-jobs submit local-file kicks/sqlite-search/MAP.jcl \
   --zosmf-profile hercules --wait-for-output
@@ -114,7 +127,9 @@ zowe zos-files upload file-to-data-set clist/SQLKICKS.clist \
   'SYS2.CMDPROC(SQLKICKS)' --zosmf-profile hercules
 ```
 
-The `SQLITEX` copybook must be present before `BUILD.jcl` and `DBUILD.jcl`.
+`SQLITEX` must be present for the direct rowset calls in `SQLKSRCH`. The
+precompiler embeds both request and SQLCA layouts in generated `SQLKDETL`, so
+that member does not rely on COBOL COPY expansion.
 All seven build jobs should end with `CC 0000`. The generated members are in
 `IBMUSER.SQLITE.KLOAD`; the SQLite API itself remains in
 `IBMUSER.SQLITE.D534.LOAD`.
@@ -128,11 +143,19 @@ for an MVS LOAD issued by an application program.
 For a non-interactive runtime check, submit `TEST.jcl` and inspect its
 `CRLPOUT` spool file. It verifies page 1, PF8 page 2, the end-of-results PF8
 boundary, PF7 back to page 1, PF4 clear, and PF5 orders for person 1.
+`EXEC-SQL-TEST.jcl` directly opens the detail screen and verifies the generated
+`SELECT INTO` path. See `README-COBOL-EXEC-SQL.md` for syntax and limits.
 
 The human-name seed and complete KICKS path were verified on MVS 3.8j/Turnkey5
 as JOB01365 (`CC 0000`). Page 1 displayed people 1-10, page 2 displayed people
 11-20, the last-page boundary and PF7 return worked, and person 1 loaded as
 `ANA HORVAT | ZAGREB | 21` with orders 101/BOOK, 102/PEN, and 103/MUG.
+
+The final self-contained embedded-SQL detail source compiled as JOB02650
+(`CC 0000`). Its generated `SELECT INTO` path and complete KICKS scenario were
+exercised by JOB02651/JOB02649 (`CC 0000`), displaying Ana Horvat, Zagreb,
+age 21 and the three expected orders. Standalone generated DML passed as
+JOB02647 (`CC 0000`).
 
 ## Person detail and CRUD
 

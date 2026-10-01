@@ -33,7 +33,58 @@
               10 WS-R-QTY          PIC X(12).
               10 FILLER            PIC X.
               10 WS-R-AMOUNT       PIC X(15).
-           EXEC SQL INCLUDE SQLCA END-EXEC.
+      * SQLite MVS structured COBOL API v2 request block
+       01  SQLX-REQUEST.
+           05 SQLX-OPERATION       PIC X(8).
+           05 SQLX-SQL-LENGTH      PIC S9(4) COMP.
+           05 SQLX-SQL             PIC X(2048).
+           05 SQLX-BIND-COUNT      PIC S9(4) COMP.
+           05 SQLX-BINDS OCCURS 8 TIMES.
+              10 SQLX-BIND-TYPE    PIC X.
+              10 FILLER            PIC X.
+              10 SQLX-BIND-LENGTH  PIC S9(4) COMP.
+              10 SQLX-BIND-VALUE   PIC X(64).
+           05 SQLX-MAX-ROWS        PIC S9(4) COMP.
+           05 SQLX-ROW-COUNT       PIC S9(4) COMP.
+           05 SQLX-COLUMN-COUNT    PIC S9(4) COMP.
+           05 SQLX-CHANGES         PIC S9(4) COMP.
+           05 SQLX-RETURN-CODE     PIC S9(4) COMP.
+           05 SQLX-MESSAGE-LENGTH  PIC S9(4) COMP.
+           05 SQLX-MESSAGE         PIC X(160).
+           05 SQLX-COLUMN-NAME OCCURS 16 TIMES PIC X(32).
+           05 SQLX-ROWS OCCURS 10 TIMES.
+              10 SQLX-CELLS OCCURS 16 TIMES.
+                 15 SQLX-CELL-TYPE   PIC X.
+                 15 FILLER            PIC X.
+                 15 SQLX-CELL-LENGTH PIC S9(4) COMP.
+                 15 SQLX-CELL-VALUE  PIC X(64).
+      * SQLite embedded-SQL compatibility area
+       01  SQLCA.
+           05 SQLCODE             PIC S9(4) COMP VALUE +0.
+           05 SQLROWC             PIC S9(4) COMP VALUE +0.
+           05 SQLCHNG             PIC S9(4) COMP VALUE +0.
+           05 SQLERRM             PIC X(160) VALUE SPACES.
+       01  SQLE-SQL-0001.
+           05 FILLER PIC X(44) VALUE
+              'SELECT NAME, CITY, AGE FROM PEOPLE WHERE ID '.
+           05 FILLER PIC X(3) VALUE
+              '= ?'.
+       01  SQLE-SQL-0002.
+           05 FILLER PIC X(44) VALUE
+              'UPDATE PEOPLE SET NAME = RTRIM(?), CITY = RT'.
+           05 FILLER PIC X(28) VALUE
+              'RIM(?), AGE = ? WHERE ID = ?'.
+       01  SQLE-SQL-0003.
+           05 FILLER PIC X(44) VALUE
+              'INSERT INTO PEOPLE(ID, NAME, CITY, AGE) VALU'.
+           05 FILLER PIC X(28) VALUE
+              'ES(?, RTRIM(?), RTRIM(?), ?)'.
+       01  SQLE-SQL-0004.
+           05 FILLER PIC X(31) VALUE
+              'DELETE FROM PEOPLE WHERE ID = ?'.
+       01  SQLE-SQL-0005.
+           05 FILLER PIC X(38) VALUE
+              'DELETE FROM ORDERS WHERE PEOPLE_ID = ?'.
            COPY SQLDMAP.
        LINKAGE SECTION.
        01  DFHCOMMAREA.
@@ -100,12 +151,28 @@
                MOVE 'ENTER PERSON ID' TO MSGO
                GO TO SEND-DETAIL.
            MOVE WS-CA-ID TO DB-ID.
-           EXEC SQL
-               SELECT NAME, CITY, AGE
-                 INTO :DB-NAME, :DB-CITY, :DB-AGE
-                 FROM PEOPLE
-                WHERE ID = :DB-ID
-           END-EXEC.
+           MOVE SPACES TO SQLX-REQUEST.
+           MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
+           MOVE 'EXECUTE' TO SQLX-OPERATION.
+           MOVE 1 TO SQLX-MAX-ROWS.
+           MOVE SQLE-SQL-0001 TO SQLX-SQL.
+           MOVE 47 TO SQLX-SQL-LENGTH.
+           MOVE 1 TO SQLX-BIND-COUNT.
+           MOVE 'T' TO SQLX-BIND-TYPE (1).
+           MOVE 5 TO SQLX-BIND-LENGTH (1).
+           MOVE DB-ID TO SQLX-BIND-VALUE (1).
+           CALL 'SQLITEX' USING SQLX-REQUEST.
+           MOVE SQLX-RETURN-CODE TO SQLCODE.
+           MOVE SQLX-ROW-COUNT TO SQLROWC.
+           MOVE SQLX-CHANGES TO SQLCHNG.
+           MOVE SQLX-MESSAGE TO SQLERRM.
+           IF SQLCODE = 0
+               IF SQLROWC = 0
+                   MOVE +100 TO SQLCODE
+               ELSE
+                   MOVE SQLX-CELL-VALUE (1, 1) TO DB-NAME
+                   MOVE SQLX-CELL-VALUE (1, 2) TO DB-CITY
+                   MOVE SQLX-CELL-VALUE (1, 3) TO DB-AGE.
            IF SQLCODE = +100
                MOVE 'N' TO WS-CA-CONFIRM
                MOVE WS-CA-ID TO DIDO
@@ -178,13 +245,30 @@
            MOVE DNAMEI TO DB-NAME.
            MOVE DCITYI TO DB-CITY.
            MOVE DAGEI TO DB-AGE.
-           EXEC SQL
-               UPDATE PEOPLE
-                  SET NAME = RTRIM(:DB-NAME),
-                      CITY = RTRIM(:DB-CITY),
-                      AGE = :DB-AGE
-                WHERE ID = :DB-ID
-           END-EXEC.
+           MOVE SPACES TO SQLX-REQUEST.
+           MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
+           MOVE 'EXECUTE' TO SQLX-OPERATION.
+           MOVE 1 TO SQLX-MAX-ROWS.
+           MOVE SQLE-SQL-0002 TO SQLX-SQL.
+           MOVE 72 TO SQLX-SQL-LENGTH.
+           MOVE 4 TO SQLX-BIND-COUNT.
+           MOVE 'T' TO SQLX-BIND-TYPE (1).
+           MOVE 20 TO SQLX-BIND-LENGTH (1).
+           MOVE DB-NAME TO SQLX-BIND-VALUE (1).
+           MOVE 'T' TO SQLX-BIND-TYPE (2).
+           MOVE 20 TO SQLX-BIND-LENGTH (2).
+           MOVE DB-CITY TO SQLX-BIND-VALUE (2).
+           MOVE 'T' TO SQLX-BIND-TYPE (3).
+           MOVE 3 TO SQLX-BIND-LENGTH (3).
+           MOVE DB-AGE TO SQLX-BIND-VALUE (3).
+           MOVE 'T' TO SQLX-BIND-TYPE (4).
+           MOVE 5 TO SQLX-BIND-LENGTH (4).
+           MOVE DB-ID TO SQLX-BIND-VALUE (4).
+           CALL 'SQLITEX' USING SQLX-REQUEST.
+           MOVE SQLX-RETURN-CODE TO SQLCODE.
+           MOVE SQLX-ROW-COUNT TO SQLROWC.
+           MOVE SQLX-CHANGES TO SQLCHNG.
+           MOVE SQLX-MESSAGE TO SQLERRM.
            IF SQLCODE NOT = 0
                PERFORM SEND-API-ERROR THRU SEND-API-ERROR-EXIT
                GO TO UPDATE-PERSON-EXIT.
@@ -201,11 +285,30 @@
            MOVE DNAMEI TO DB-NAME.
            MOVE DCITYI TO DB-CITY.
            MOVE DAGEI TO DB-AGE.
-           EXEC SQL
-               INSERT INTO PEOPLE(ID, NAME, CITY, AGE)
-               VALUES(:DB-ID, RTRIM(:DB-NAME),
-                      RTRIM(:DB-CITY), :DB-AGE)
-           END-EXEC.
+           MOVE SPACES TO SQLX-REQUEST.
+           MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
+           MOVE 'EXECUTE' TO SQLX-OPERATION.
+           MOVE 1 TO SQLX-MAX-ROWS.
+           MOVE SQLE-SQL-0003 TO SQLX-SQL.
+           MOVE 72 TO SQLX-SQL-LENGTH.
+           MOVE 4 TO SQLX-BIND-COUNT.
+           MOVE 'T' TO SQLX-BIND-TYPE (1).
+           MOVE 5 TO SQLX-BIND-LENGTH (1).
+           MOVE DB-ID TO SQLX-BIND-VALUE (1).
+           MOVE 'T' TO SQLX-BIND-TYPE (2).
+           MOVE 20 TO SQLX-BIND-LENGTH (2).
+           MOVE DB-NAME TO SQLX-BIND-VALUE (2).
+           MOVE 'T' TO SQLX-BIND-TYPE (3).
+           MOVE 20 TO SQLX-BIND-LENGTH (3).
+           MOVE DB-CITY TO SQLX-BIND-VALUE (3).
+           MOVE 'T' TO SQLX-BIND-TYPE (4).
+           MOVE 3 TO SQLX-BIND-LENGTH (4).
+           MOVE DB-AGE TO SQLX-BIND-VALUE (4).
+           CALL 'SQLITEX' USING SQLX-REQUEST.
+           MOVE SQLX-RETURN-CODE TO SQLCODE.
+           MOVE SQLX-ROW-COUNT TO SQLROWC.
+           MOVE SQLX-CHANGES TO SQLCHNG.
+           MOVE SQLX-MESSAGE TO SQLERRM.
            IF SQLCODE NOT = 0
                PERFORM SEND-API-ERROR THRU SEND-API-ERROR-EXIT
                GO TO INSERT-PERSON-EXIT.
@@ -223,9 +326,21 @@
                PERFORM SEND-API-ERROR THRU SEND-API-ERROR-EXIT
                GO TO CONFIRM-DELETE-EXIT.
            MOVE WS-CA-ID TO DB-ID.
-           EXEC SQL
-               DELETE FROM PEOPLE WHERE ID = :DB-ID
-           END-EXEC.
+           MOVE SPACES TO SQLX-REQUEST.
+           MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
+           MOVE 'EXECUTE' TO SQLX-OPERATION.
+           MOVE 1 TO SQLX-MAX-ROWS.
+           MOVE SQLE-SQL-0004 TO SQLX-SQL.
+           MOVE 31 TO SQLX-SQL-LENGTH.
+           MOVE 1 TO SQLX-BIND-COUNT.
+           MOVE 'T' TO SQLX-BIND-TYPE (1).
+           MOVE 5 TO SQLX-BIND-LENGTH (1).
+           MOVE DB-ID TO SQLX-BIND-VALUE (1).
+           CALL 'SQLITEX' USING SQLX-REQUEST.
+           MOVE SQLX-RETURN-CODE TO SQLCODE.
+           MOVE SQLX-ROW-COUNT TO SQLROWC.
+           MOVE SQLX-CHANGES TO SQLCHNG.
+           MOVE SQLX-MESSAGE TO SQLERRM.
            IF SQLCODE NOT = 0
                PERFORM SEND-API-ERROR THRU SEND-API-ERROR-EXIT
                GO TO CONFIRM-DELETE-EXIT.
@@ -240,9 +355,21 @@
            EXIT.
        DELETE-ORDERS.
            MOVE WS-CA-ID TO DB-ID.
-           EXEC SQL
-               DELETE FROM ORDERS WHERE PEOPLE_ID = :DB-ID
-           END-EXEC.
+           MOVE SPACES TO SQLX-REQUEST.
+           MOVE 0 TO SQLX-BIND-COUNT SQLX-RETURN-CODE.
+           MOVE 'EXECUTE' TO SQLX-OPERATION.
+           MOVE 1 TO SQLX-MAX-ROWS.
+           MOVE SQLE-SQL-0005 TO SQLX-SQL.
+           MOVE 38 TO SQLX-SQL-LENGTH.
+           MOVE 1 TO SQLX-BIND-COUNT.
+           MOVE 'T' TO SQLX-BIND-TYPE (1).
+           MOVE 5 TO SQLX-BIND-LENGTH (1).
+           MOVE DB-ID TO SQLX-BIND-VALUE (1).
+           CALL 'SQLITEX' USING SQLX-REQUEST.
+           MOVE SQLX-RETURN-CODE TO SQLCODE.
+           MOVE SQLX-ROW-COUNT TO SQLROWC.
+           MOVE SQLX-CHANGES TO SQLCHNG.
+           MOVE SQLX-MESSAGE TO SQLERRM.
        DELETE-ORDERS-EXIT.
            EXIT.
        SET-API-ERROR.

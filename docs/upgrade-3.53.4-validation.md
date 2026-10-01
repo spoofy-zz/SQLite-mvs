@@ -21,6 +21,10 @@ The former 3.8.11.1 `IBMUSER.SQLITE.LOAD` deployment has been retired.
 | VACUUM stale-temp recovery | JOB02623, CC 0000, 10 pages reduced to 7 |
 | VACUUM concurrent holder/probe | JOB02631/JOB02632, both CC 0000 |
 | Post-VACUUM regression/backup/KICKS | JOB02633-JOB02636, all CC 0000 |
+| KICKS `EXEC SQL` compile | JOB02650, CC 0000 |
+| Embedded SQL DML regression | JOB02647, CC 0000 |
+| KICKS `EXEC SQL SELECT INTO` runtime | JOB02651, CC 0000 |
+| Full post-change KICKS scenario | JOB02649, CC 0000 |
 
 The KICKS batch scenario exercised initial search, both result pages, the
 last-page boundary, previous-page navigation, clear, person orders, and the

@@ -57,6 +57,7 @@ git submodule update --init --recursive
 make sdk
 tools/probe_sqlite_upgrade.sh 3.53.4 stack
 make cobol-bridge
+make kicks-sql-precompile test-precompiler
 ```
 
 The upgrade build produces `SQLT534`, `SQLI534`, `SQLITEA`, and `SQLITEX` in
@@ -145,10 +146,13 @@ zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKSRCH.cbl \
   'IBMUSER.SQLITE.SOURCE(SQLKSRCH)' --zosmf-profile hercules
 zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLDMAP.bms \
   'IBMUSER.SQLITE.SOURCE(SQLDMAP)' --zosmf-profile hercules
-zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKDETL.cbl \
+zowe zos-files upload file-to-data-set \
+  kicks/sqlite-search/generated/SQLKDETL.cbl \
   'IBMUSER.SQLITE.SOURCE(SQLKDETL)' --zosmf-profile hercules
 zowe zos-files upload file-to-data-set api/SQLITEX.cpy \
   'KICKS.KICKS.V1R5M0.COBCOPY(SQLITEX)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set api/SQLISQLC.cpy \
+  'KICKS.KICKS.V1R5M0.COBCOPY(SQLISQLC)' --zosmf-profile hercules
 
 zowe zos-jobs submit local-file kicks/sqlite-search/MAP.jcl \
   --zosmf-profile hercules --wait-for-output
@@ -166,8 +170,10 @@ zowe zos-jobs submit local-file kicks/sqlite-search/STARTUP-3.53.4.jcl \
   --zosmf-profile hercules --wait-for-output
 ```
 
-The `SQLITEX` copybook upload is required before either COBOL build on a fresh
-KICKS installation. The final startup job copies `KIKSIP1$` into `D534.LOAD`,
+`SQLITEX` is required by the direct rowset source. The embedded-SQL
+precompiler places the SQLCA and request layouts directly in generated
+`SQLKDETL`; `SQLISQLC` is also installed as the canonical layout for custom
+programs. The final startup job copies `KIKSIP1$` into `D534.LOAD`,
 allowing the COBOL bridge to load `SQLITEA`/`SQLITEX`. The SQLite deploy
 replaces the entire load library, so rerun `STARTUP-3.53.4.jcl` after every
 later deploy.
@@ -324,6 +330,8 @@ See `README-COBOL-API.md` for the verified OS/VS COBOL `CALL 'SQLITEA'`
 interface, copybook, bridge installation, and example job.
 See `README-COBOL-STRUCTURED.md` for the typed, parameterized `SQLITEX`
 request/row API used by the KICKS people/orders screen.
+See `README-COBOL-EXEC-SQL.md` for the KICKS embedded-SQL precompiler,
+supported `EXEC SQL` syntax, generated source, and build procedure.
 See `kicks/sqlite-search/README.md` for the BMS/COBOL KICKS example that
 searches the sample `people` table by name or city using transaction `SQLS`.
 See `docs/upgrade-3.53.4-validation.md` for the complete current-version MVS

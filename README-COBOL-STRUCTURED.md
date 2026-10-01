@@ -6,6 +6,10 @@ to eight bind values. The response contains column metadata and up to ten rows
 of typed cells, so KICKS programs no longer parse `value | value` text or
 insert terminal input into SQL literals.
 
+KICKS programs may alternatively use the embedded-SQL precompiler documented
+in `README-COBOL-EXEC-SQL.md`. It translates supported `EXEC SQL` blocks into
+this same `SQLITEX` request format.
+
 The current validated `SQLITEX` implementation is built with SQLite
 **3.53.4** and passed both the standalone COBOL test and the KICKS application
 test on MVS 3.8j.
