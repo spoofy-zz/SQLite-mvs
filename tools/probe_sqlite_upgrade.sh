@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-version=${1:?usage: probe_sqlite_upgrade.sh VERSION [c|full|tso]}
+version=${1:?usage: probe_sqlite_upgrade.sh VERSION [c|full|tso|stack]}
 phase=${2:-full}
 
 case "$version" in
@@ -37,8 +37,10 @@ if [[ "$phase" == c ]]; then
   target=probe-c
 elif [[ "$phase" == tso ]]; then
   target=tso
+elif [[ "$phase" == stack ]]; then
+  target=stack
 elif [[ "$phase" != full ]]; then
-  echo "phase must be c, full, or tso" >&2
+  echo "phase must be c, full, tso, or stack" >&2
   exit 2
 fi
 

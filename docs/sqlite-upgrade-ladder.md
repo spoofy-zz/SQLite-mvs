@@ -108,3 +108,5 @@ query, and `.quit`. The CLIST allocates only `D372DB` and `D372JRN` and calls
 The same isolated setup is available for the current 3.53.4 release as
 `SQLI534`, `IBMUSER.SQLITE.D534.LOAD`, `D534DB`, and `D534JRN`. Install
 `clist/SQL534.clist` as `SYS2.CMDPROC(SQL534)` and start it with `SQL534`.
+The text and structured COBOL APIs and the KICKS application have also been
+validated against this library; see `docs/upgrade-3.53.4-validation.md`.

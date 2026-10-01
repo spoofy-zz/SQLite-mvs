@@ -26,7 +26,7 @@ CC370_SOURCE ?= toolchain/cc370
 SQLITE_MVS_CPPFLAGS := -include include/sqlite3_mvs_compat.h \
 	-include $(NAMES_HEADER)
 
-.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge names sdk as370-large clean mbt-build upgrade-probe-c upgrade-probe upgrade-matrix
+.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge stack names sdk as370-large clean mbt-build upgrade-probe-c upgrade-probe upgrade-matrix
 
 UPGRADE_VERSION ?= 3.15.2
 
@@ -41,6 +41,8 @@ upgrade-matrix:
 		3.40.1 3.45.3 3.49.2 3.53.4; do \
 		tools/probe_sqlite_upgrade.sh $$version full || exit $$?; \
 	done
+
+stack: probe tso cobol-api cobol-api-x
 
 sdk:
 	$(MAKE) -C toolchain/cc370 PREFIX=$(SDK_ROOT) install
@@ -115,11 +117,11 @@ tso: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt0.o \
 		$^ -lc -iebcopy -o $(BUILDDIR)/$(TSO_MODULE)
 
-$(BUILDDIR)/sqlite_cobol_start.o: src/sqlite_cobol_start.c include/sqlite_cobol.h
-	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+$(BUILDDIR)/sqlite_cobol_start.o: src/sqlite_cobol_start.c include/sqlite_cobol.h $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
-$(BUILDDIR)/sqlite_cobol_api.o: src/sqlite_cobol_api.c include/sqlite_cobol.h
-	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+$(BUILDDIR)/sqlite_cobol_api.o: src/sqlite_cobol_api.c include/sqlite_cobol.h $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
 cobol-api: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(BUILDDIR)/sqlite_cobol_start.o $(BUILDDIR)/sqlite_cobol_api.o
@@ -128,11 +130,11 @@ cobol-api: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
 		$^ -lc -iebcopy -o $(BUILDDIR)/SQLITEA
 
-$(BUILDDIR)/sqlite_cobol_x_start.o: src/sqlite_cobol_x_start.c include/sqlite_cobol_x.h
-	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+$(BUILDDIR)/sqlite_cobol_x_start.o: src/sqlite_cobol_x_start.c include/sqlite_cobol_x.h $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
-$(BUILDDIR)/sqlite_cobol_x_api.o: src/sqlite_cobol_x_api.c include/sqlite_cobol_x.h
-	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+$(BUILDDIR)/sqlite_cobol_x_api.o: src/sqlite_cobol_x_api.c include/sqlite_cobol_x.h $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
 cobol-api-x: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(BUILDDIR)/sqlite_cobol_x_start.o $(BUILDDIR)/sqlite_cobol_x_api.o

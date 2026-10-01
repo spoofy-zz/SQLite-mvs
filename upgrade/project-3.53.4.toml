@@ -15,6 +15,18 @@ entry = "@@CRT0"
 startup = "crt0"
 sources = []
 
+[[module]]
+name = "SQLITEA"
+entry = "@@CRT0"
+startup = "crt1"
+sources = []
+
+[[module]]
+name = "SQLITEX"
+entry = "@@CRT0"
+startup = "crt1"
+sources = []
+
 [deploy]
 target = "IBMUSER.SQLITE.D534.LOAD"
 
