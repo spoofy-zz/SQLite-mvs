@@ -40,8 +40,8 @@ SQLITE
 
 SQL statements may span multiple terminal inputs and execute when a complete
 statement ending in `;` has been entered. `.quit`, `.exit`, or PF3 returns to
-TSO READY. Clear discards the current incomplete statement. PF12 immediately
-repeats the last completed SQL statement or dot-command.
+TSO READY. Clear discards the current incomplete statement. PF12 retrieves the
+last completed SQL statement or dot-command into the editable input field.
 
 The separate sample database is opened with `TESTDB` rather than `SQLITE`.
 See `README-TESTDB.md` for its schema, seed job, and example joins.
@@ -87,10 +87,11 @@ Command             Description
 ```
 
 PF12 keeps one command of history. Multi-line SQL is saved as one complete
-statement after its terminating semicolon. Pressing PF12 while entering a new
-multi-line statement discards that incomplete input and repeats the previous
-completed command. Before the first command, PF12 reports that history is
-empty.
+statement after its terminating semicolon. Pressing PF12 places that command
+in the current input field without executing it; edit it and press Enter to
+submit. PF12 while entering a new multi-line statement discards that incomplete
+input. Before the first command, PF12 reports that history is empty. A recalled
+command must fit on the current 3270 input row.
 
 For the current `SQLITE` client, `.version` reports the active engine rather
 than a documentation constant. Its output begins with:

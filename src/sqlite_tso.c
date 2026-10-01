@@ -23,6 +23,8 @@
 
 extern int tsqtget(char *buf, int max) asm("TSQTGET");
 extern int tsqtput(char *buf, int len) asm("TSQTPUT");
+extern int tsqtrecl(char *buf, int len) asm("TSQTRECL");
+extern int tsqtline(void) asm("TSQTLINE");
 extern int tsqtclr(void) asm("TSQTCLR");
 
 typedef struct ShellState ShellState;
@@ -52,6 +54,56 @@ static int termAddress(unsigned char first, unsigned char second)
 {
     return (first & 0xc0) ? ((first & 63) * 64 + (second & 63))
                           : ((first & 63) * 256 + second);
+}
+
+static void termSetAddress(unsigned char *out, int address)
+{
+    out[0] = (unsigned char)(0x40 | ((address >> 6) & 0x3f));
+    out[1] = (unsigned char)(0x40 | (address & 0x3f));
+}
+
+static int termRecall(const unsigned char *raw, int rawLength,
+                      const char *command)
+{
+    unsigned char output[TSO_LINE + 16];
+    unsigned char startAddress[2];
+    unsigned char endAddress[2];
+    int start;
+    int end;
+    int length = (int)strlen(command);
+    int i;
+    int used = 0;
+    startAddress[0] = raw[1];
+    startAddress[1] = raw[2];
+    for (i = 3; i + 2 < rawLength; i++) {
+        if (raw[i] == 0x11) {
+            startAddress[0] = raw[i + 1];
+            startAddress[1] = raw[i + 2];
+            i += 2;
+        }
+    }
+    start = termAddress(startAddress[0], startAddress[1]);
+    end = ((start / 80) + 1) * 80;
+    if (end >= 1920) end = 0;
+    if (start <= 0 || length > ((start / 80) + 1) * 80 - start)
+        return -2;
+    termSetAddress(endAddress, end);
+    output[used++] = 0xc1;             /* restore keyboard, reset MDT */
+    output[used++] = 0x11;             /* SBA input start */
+    output[used++] = startAddress[0];
+    output[used++] = startAddress[1];
+    output[used++] = 0x12;             /* erase old input to next row */
+    output[used++] = endAddress[0];
+    output[used++] = endAddress[1];
+    output[used++] = 0x11;             /* redefine editable field */
+    termSetAddress(output + used, start - 1);
+    used += 2;
+    output[used++] = 0x1d;             /* start field */
+    output[used++] = 0xc1;             /* unprotected, MDT on */
+    memcpy(output + used, command, length);
+    used += length;
+    output[used++] = 0x13;             /* insert cursor after command */
+    return tsqtrecl((char *)output, used);
 }
 
 /* TGET ASIS returns a 3270 Read Modified record, not a plain C string:
@@ -555,7 +607,7 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut(".version            Show active SQLite runtime version");
         tsoOut(".quit / .exit       Return to TSO READY");
         tsoOut("SQL statements must end with ;  PF3 exits");
-        tsoOut("PF12 repeats the last completed command");
+        tsoOut("PF12 retrieves the last command for editing");
     } else if (equalIgnoreCase(line, ".tables")) {
         executeSql(db, shell,
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
@@ -876,6 +928,7 @@ int main(void)
     unsigned char raw[TSO_LINE];
     int length;
     int rc;
+    int recallActive = 0;
     ShellState shell;
     resetShell(&shell);
     statement[0] = '\0';
@@ -895,10 +948,15 @@ int main(void)
     tsoOut("SQLite %s for MVS TSO", sqlite3_libversion());
     tsoOut("Use .help for commands");
     for (;;) {
-        terminalOut(statement[0] ? "   ...> " : "sqlite> ");
+        if (!recallActive)
+            terminalOut(statement[0] ? "   ...> " : "sqlite> ");
         memset(line, 0, sizeof(line));
         memset(raw, 0, sizeof(raw));
         length = tsqtget((char *)raw, sizeof(raw));
+        if (recallActive) {
+            tsqtline();
+            recallActive = 0;
+        }
         if (length < 0) break;
         if (length > 0 && raw[0] == TERM_PF3) break;
         if (length > 0 && raw[0] == TERM_PF12) {
@@ -907,12 +965,13 @@ int main(void)
                 tsoOut("PF12: no previous command");
                 continue;
             }
-            strcpy(line, lastCommand);
-            terminalOut("PF12: %s", line);
-            if (line[0] == '.') {
-                if (dotCommand(db, &shell, line)) break;
+            rc = termRecall(raw, length, lastCommand);
+            if (rc == -2) {
+                tsoOut("PF12: previous command is too long for input line");
+            } else if (rc != 0) {
+                tsoOut("PF12: cannot restore editable input field");
             } else {
-                executeSql(db, &shell, line);
+                recallActive = 1;
             }
             continue;
         } else if (length > 0 && raw[0] == TERM_CLEAR) {
