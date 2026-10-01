@@ -25,6 +25,176 @@ reproducible bootstrap baseline. The current 3.53.4 amalgamation is fetched by
 the upgrade build and also remains unmodified; platform code and compatibility
 shims belong outside upstream `sqlite3.c`.
 
+## Deploying the complete project to a new MVS
+
+These instructions install SQLite 3.53.4, the seeded VSAM databases, TSO
+clients, COBOL bridge, and the KICKS people/orders application on a fresh
+Turnkey5/MVS 3.8j system.
+
+The supplied JCL and CLISTs use HLQ `IBMUSER`, volume `TSO003`, command library
+`SYS2.CMDPROC`, and KICKS V1R5M0 datasets. Change those names consistently
+before starting if the target system differs. The workstation needs Python 3,
+Zowe CLI with a `hercules` z/OSMF profile, and Git submodules. The MVS host must
+already contain KICKS 1.5 and the OS/VS COBOL toolchain.
+
+### 1. Configure and build
+
+Clone the repository, initialize its submodules, and create `.env` with the
+target mvsMF connection. Do not commit this file:
+
+```text
+MBT_MVS_HOST=host-name
+MBT_MVS_PORT=1080
+MBT_MVS_USER=IBMUSER
+MBT_MVS_PASS=password
+MBT_MVS_HLQ=IBMUSER
+```
+
+Build the SDK, SQLite 3.53.4 stack, and COBOL bridge:
+
+```sh
+git submodule update --init --recursive
+make sdk
+tools/probe_sqlite_upgrade.sh 3.53.4 stack
+make cobol-bridge
+```
+
+The upgrade build produces `SQLT534`, `SQLI534`, `SQLITEA`, and `SQLITEX` in
+`build/upgrades/3.53.4/probe`. The bridge is `build/sqliteabr.o`.
+
+### 2. Create VSAM storage and deploy SQLite
+
+The following definition jobs are destructive: rerunning them deletes the
+corresponding database or backup pair. On a new system, submit them once:
+
+```sh
+zowe zos-jobs submit local-file jcl/define-upgrade-3.53.4.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file jcl/define-backup-rrds.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+Deploy the current modules to `IBMUSER.SQLITE.D534.LOAD`:
+
+```sh
+PATH="$PWD/build/sdk/bin:$PATH" \
+  python3 mbt/scripts/mbtdeploy.py \
+  --project upgrade/project-3.53.4.toml \
+  --builddir build/upgrades/3.53.4/probe \
+  --ld "$PWD/build/sdk/bin/ld370"
+```
+
+Create and upload the FB80 COBOL bridge dataset:
+
+```sh
+zowe zos-jobs submit local-file jcl/cobol-api-setup.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-files upload file-to-data-set build/sqliteabr.o \
+  IBMUSER.SQLITE.BRG80 --binary --zosmf-profile hercules
+```
+
+### 3. Create and seed the databases
+
+Create `TESTDB` with 20 named people and 60 orders. Then install the same
+`people`/`orders` sample in the regular database opened by `SQLITE`:
+
+```sh
+zowe zos-jobs submit local-file jcl/create-testdb.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file jcl/seed-default.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+`create-testdb.jcl` recreates `IBMUSER.SQLITE.TESTDB` and `TESTJRN`.
+`seed-default.jcl` recreates only the two sample tables in `D534DB` and keeps
+unrelated tables.
+
+### 4. Install the TSO commands
+
+```sh
+zowe zos-files upload file-to-data-set clist/SQLITE.clist \
+  'SYS2.CMDPROC(SQLITE)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set clist/SQL534.clist \
+  'SYS2.CMDPROC(SQL534)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set clist/TESTDB.clist \
+  'SYS2.CMDPROC(TESTDB)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set clist/SQLITADM.clist \
+  'SYS2.CMDPROC(SQLITADM)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set clist/SQLK534.clist \
+  'SYS2.CMDPROC(SQLK534)' --zosmf-profile hercules
+```
+
+`SQLITE` and `SQL534` open `D534DB`; `TESTDB` opens the separate KICKS sample.
+`SQLITADM` also allocates the backup RRDS pair.
+
+### 5. Build and install the KICKS application
+
+`SETUP.jcl` recreates `IBMUSER.SQLITE.SOURCE` and `KLOAD`, so do not rerun it
+after making unsaved host-side changes:
+
+```sh
+zowe zos-jobs submit local-file kicks/sqlite-search/SETUP.jcl \
+  --zosmf-profile hercules --wait-for-output
+
+zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKMAP.bms \
+  'IBMUSER.SQLITE.SOURCE(SQLKMAP)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKSRCH.cbl \
+  'IBMUSER.SQLITE.SOURCE(SQLKSRCH)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLDMAP.bms \
+  'IBMUSER.SQLITE.SOURCE(SQLDMAP)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKDETL.cbl \
+  'IBMUSER.SQLITE.SOURCE(SQLKDETL)' --zosmf-profile hercules
+
+zowe zos-jobs submit local-file kicks/sqlite-search/MAP.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/BUILD.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/DMAP.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/DBUILD.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/PCT.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/PPT.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/STARTUP-3.53.4.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+The final startup job copies `KIKSIP1$` into `D534.LOAD`, allowing the COBOL
+bridge to load `SQLITEA`/`SQLITEX`. The SQLite deploy replaces the entire load
+library, so rerun `STARTUP-3.53.4.jcl` after every later deploy.
+
+### 6. Verify the installation
+
+Run the non-interactive tests first:
+
+```sh
+zowe zos-jobs submit local-file jcl/smoke.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file jcl/test-suite.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file jcl/cobol-api-x-test.jcl \
+  --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file kicks/sqlite-search/TEST.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+At TSO `READY`, verify the command-line client:
+
+```text
+SQLITE
+.version
+.tables
+SELECT count(*) FROM people;
+.quit
+```
+
+Start the KICKS application with `SQLK534`, then enter transaction `SQLS`.
+Search by name or city, use PF6 for detail, and PF3 to leave the transaction.
+See `README-TSO.md` and `kicks/sqlite-search/README.md` for the complete command
+and screen references.
+
 ## Compiler probe
 
 ```sh
@@ -100,8 +270,8 @@ An interactive foreground TSO client is included as `SQLI534` for the current
 SQLite 3.53.4 stack. `SQLITE` is the standard command and `SQL534` remains an
 explicit versioned alias. It accepts multi-line SQL, prints query columns and
 rows, and supports configurable column/list output, headers, widths, NULL text,
-SQL echo, busy timeout, schema/database inspection, and clean PF3 exit. The
-Both CLISTs allocate the current-version RRDS pair and invoke `SQLI534`:
+SQL echo, busy timeout, schema/database inspection, and clean PF3 exit. Both
+CLISTs allocate the current-version RRDS pair and invoke `SQLI534`:
 
 ```text
 SQLITE

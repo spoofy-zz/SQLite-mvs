@@ -6,8 +6,7 @@ prefix, displays ten people per page, and displays a person's orders by ID.
 It uses typed `SQLITEX` binds and result cells.
 
 The application is validated with the current SQLite **3.53.4** stack. Use
-`SQLK534` for that installation; `SQLKICKS` remains the legacy/default
-launcher.
+`SQLK534` to start it.
 
 The application follows the same layout as the KICKS `fuel` and `store`
 samples: a BMS map, an OS/VS COBOL command-level program, separate PCT/PPT
@@ -60,9 +59,9 @@ PF5 for person 1 displayed orders 101/BOOK, 102/PEN, and 103/MUG.
 | `DBUILD.jcl` | Translates, compiles, and links `SQLKDETL` |
 | `PCT.jcl` | Builds PCT suffix `SQ`, including transaction `SQLS` |
 | `PPT.jcl` | Builds PPT suffix `SQ`, including program and mapset entries |
-| `STARTUP.jcl` | Copies KICKS startup into the SQLite API TASKLIB |
+| `STARTUP-3.53.4.jcl` | Copies KICKS startup into the SQLite API TASKLIB |
 | `TEST.jcl` | Runs a batch CRLP terminal search through KICKS |
-| `SQLKICKS.clist` | Allocates SQLite/KICKS files and starts the application region |
+| `../../clist/SQLK534.clist` | Allocates SQLite/KICKS files and starts the application region |
 
 ## Build and install
 
@@ -102,22 +101,22 @@ zowe zos-jobs submit local-file kicks/sqlite-search/PCT.jcl \
   --zosmf-profile hercules --wait-for-output
 zowe zos-jobs submit local-file kicks/sqlite-search/PPT.jcl \
   --zosmf-profile hercules --wait-for-output
-zowe zos-jobs submit local-file kicks/sqlite-search/STARTUP.jcl \
+zowe zos-jobs submit local-file kicks/sqlite-search/STARTUP-3.53.4.jcl \
   --zosmf-profile hercules --wait-for-output
 ```
 
 Install the launcher:
 
 ```sh
-zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKICKS.clist \
-  'SYS2.CMDPROC(SQLKICKS)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set clist/SQLK534.clist \
+  'SYS2.CMDPROC(SQLK534)' --zosmf-profile hercules
 ```
 
 All seven build jobs should end with `CC 0000`. The generated members are in
 `IBMUSER.SQLITE.KLOAD`; the SQLite API itself remains in
 `IBMUSER.SQLITE.D534.LOAD`.
 
-`STARTUP.jcl` is required for the COBOL bridge. The CLIST invokes the private
+`STARTUP-3.53.4.jcl` is required for the COBOL bridge. The CLIST invokes the private
 `IBMUSER.SQLITE.D534.LOAD(KIKSIP1$)` copy, which makes that library the MVS TASKLIB
 and lets the bridge's `LOAD EP=SQLITEA` find the API module. Merely placing
 `IBMUSER.SQLITE.D534.LOAD` in the KICKS `SKIKLOAD` concatenation is not sufficient
@@ -157,7 +156,7 @@ PF7/PF8 requests.
 From a clean TSO `READY` prompt:
 
 ```text
-SQLKICKS
+SQLK534
 ```
 
 After the KICKS startup screen appears, clear it if necessary and enter:
