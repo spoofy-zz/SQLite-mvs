@@ -909,6 +909,12 @@ int main(void)
             }
             strcpy(line, lastCommand);
             terminalOut("PF12: %s", line);
+            if (line[0] == '.') {
+                if (dotCommand(db, &shell, line)) break;
+            } else {
+                executeSql(db, &shell, line);
+            }
+            continue;
         } else if (length > 0 && raw[0] == TERM_CLEAR) {
             statement[0] = '\0';
             if (tsqtclr() != 0)
