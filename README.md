@@ -144,6 +144,8 @@ zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLDMAP.bms \
   'IBMUSER.SQLITE.SOURCE(SQLDMAP)' --zosmf-profile hercules
 zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKDETL.cbl \
   'IBMUSER.SQLITE.SOURCE(SQLKDETL)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set api/SQLITEX.cpy \
+  'KICKS.KICKS.V1R5M0.COBCOPY(SQLITEX)' --zosmf-profile hercules
 
 zowe zos-jobs submit local-file kicks/sqlite-search/MAP.jcl \
   --zosmf-profile hercules --wait-for-output
@@ -161,9 +163,11 @@ zowe zos-jobs submit local-file kicks/sqlite-search/STARTUP-3.53.4.jcl \
   --zosmf-profile hercules --wait-for-output
 ```
 
-The final startup job copies `KIKSIP1$` into `D534.LOAD`, allowing the COBOL
-bridge to load `SQLITEA`/`SQLITEX`. The SQLite deploy replaces the entire load
-library, so rerun `STARTUP-3.53.4.jcl` after every later deploy.
+The `SQLITEX` copybook upload is required before either COBOL build on a fresh
+KICKS installation. The final startup job copies `KIKSIP1$` into `D534.LOAD`,
+allowing the COBOL bridge to load `SQLITEA`/`SQLITEX`. The SQLite deploy
+replaces the entire load library, so rerun `STARTUP-3.53.4.jcl` after every
+later deploy.
 
 ### 6. Verify the installation
 

@@ -88,6 +88,8 @@ zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLDMAP.bms \
   'IBMUSER.SQLITE.SOURCE(SQLDMAP)' --zosmf-profile hercules
 zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKDETL.cbl \
   'IBMUSER.SQLITE.SOURCE(SQLKDETL)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set api/SQLITEX.cpy \
+  'KICKS.KICKS.V1R5M0.COBCOPY(SQLITEX)' --zosmf-profile hercules
 
 zowe zos-jobs submit local-file kicks/sqlite-search/MAP.jcl \
   --zosmf-profile hercules --wait-for-output
@@ -112,6 +114,7 @@ zowe zos-files upload file-to-data-set clist/SQLK534.clist \
   'SYS2.CMDPROC(SQLK534)' --zosmf-profile hercules
 ```
 
+The `SQLITEX` copybook must be present before `BUILD.jcl` and `DBUILD.jcl`.
 All seven build jobs should end with `CC 0000`. The generated members are in
 `IBMUSER.SQLITE.KLOAD`; the SQLite API itself remains in
 `IBMUSER.SQLITE.D534.LOAD`.
