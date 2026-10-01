@@ -9,6 +9,7 @@ SQLITE_INCLUDE_DIR ?= $(dir $(SQLITE_HEADER))
 NAMES_HEADER ?= include/sqlite3_mvs_names.h
 BUILDDIR ?= build
 LOAD_MODULE ?= SQLTTEST
+TSO_MODULE ?= SQLITSO
 SDK_ROOT ?= $(abspath build/sdk)
 ifneq (,$(wildcard $(SDK_ROOT)/bin/cc370))
 CC370 ?= $(SDK_ROOT)/bin/cc370
@@ -95,8 +96,8 @@ probe-link: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o $(BUILDDIR)/core_lin
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
 		$^ -lc -iebcopy -o $(BUILDDIR)/$(LOAD_MODULE)
 
-$(BUILDDIR)/sqlite_tso.o: src/sqlite_tso.c include/sqlite3_mvs_names.h
-	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@
+$(BUILDDIR)/sqlite_tso.o: src/sqlite_tso.c $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
 $(BUILDDIR)/tsqtget.o: asm/tsqtget.asm
 	@mkdir -p $(BUILDDIR)
@@ -109,9 +110,9 @@ $(BUILDDIR)/tsqtput.o: asm/tsqtput.asm
 tso: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(BUILDDIR)/sqlite_tso.o $(BUILDDIR)/tsqtget.o $(BUILDDIR)/tsqtput.o
 	$(LD370) -L$(shell dirname $$(command -v $(CC370)))/../cc370/lib \
-		--name SQLITSO -e @@CRT0 \
+		--name $(TSO_MODULE) -e @@CRT0 \
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt0.o \
-		$^ -lc -iebcopy -o $(BUILDDIR)/SQLITSO
+		$^ -lc -iebcopy -o $(BUILDDIR)/$(TSO_MODULE)
 
 $(BUILDDIR)/sqlite_cobol_start.o: src/sqlite_cobol_start.c include/sqlite_cobol.h
 	$(CC370) -std=gnu89 -O1 -Iinclude -Ivendor/sqlite -c $< -o $@

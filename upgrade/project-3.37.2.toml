@@ -9,6 +9,12 @@ entry = "@@CRT0"
 startup = "crt1"
 sources = []
 
+[[module]]
+name = "SQLI372"
+entry = "@@CRT0"
+startup = "crt0"
+sources = []
+
 [deploy]
 target = "IBMUSER.SQLITE.D372.LOAD"
 

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-version=${1:?usage: probe_sqlite_upgrade.sh VERSION [c|full]}
+version=${1:?usage: probe_sqlite_upgrade.sh VERSION [c|full|tso]}
 phase=${2:-full}
 
 case "$version" in
@@ -31,8 +31,10 @@ fi
 target=probe
 if [[ "$phase" == c ]]; then
   target=probe-c
+elif [[ "$phase" == tso ]]; then
+  target=tso
 elif [[ "$phase" != full ]]; then
-  echo "phase must be c or full" >&2
+  echo "phase must be c, full, or tso" >&2
   exit 2
 fi
 
@@ -43,6 +45,7 @@ make -C "$root" "$target" \
   NAMES_HEADER="build/upgrades/$version/sqlite3_mvs_names.h" \
   BUILDDIR="build/upgrades/$version/probe" \
   LOAD_MODULE="$module" \
+  TSO_MODULE="SQLI${module#SQLT}" \
   AS370_LARGE=build/tools/as370
 
 grep -m1 '#define SQLITE_VERSION ' "$source_dir/sqlite3.c"

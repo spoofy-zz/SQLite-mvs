@@ -64,3 +64,26 @@ does not overwrite the stable load library or database. The 3.37.2 suite adds
 runtime checks for UPSERT, window functions, generated columns, `RETURNING`,
 and `STRICT` tables in addition to the common transaction, constraint, view,
 foreign-key, BLOB, and integrity tests.
+
+## Interactive TSO candidate
+
+Build the separate `SQLI372` shell and redeploy both candidate modules:
+
+```sh
+tools/probe_sqlite_upgrade.sh 3.37.2 tso
+PATH="$PWD/build/sdk/bin:$PATH" python3 mbt/scripts/mbtdeploy.py \
+  --project upgrade/project-3.37.2.toml \
+  --builddir build/upgrades/3.37.2/probe \
+  --ld "$PWD/build/sdk/bin/ld370"
+```
+
+Install `clist/SQL372.clist` as a command member such as
+`SYS2.CMDPROC(SQL372)`. From TSO READY, start the isolated shell with:
+
+```text
+SQL372
+```
+
+Verify it interactively with `.version`, `.databases`, an UPSERT or window
+query, and `.quit`. The CLIST allocates only `D372DB` and `D372JRN` and calls
+`SQLI372`; the stable `SQLITE` command remains unchanged.
