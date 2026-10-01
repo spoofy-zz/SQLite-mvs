@@ -6,9 +6,9 @@ explicit versioned alias. The 3.8.11.1 bootstrap is source-only and is no
 longer installed on the host.
 
 `SQLI534` is an interactive SQLite command-line program for a foreground TSO
-session on MVS 3.8j. The `SQLITE` CLIST allocates the database and rollback
-journal RRDS clusters, calls the load module, and releases both DD names when
-the program exits.
+session on MVS 3.8j. The `SQLITE` CLIST allocates the database, rollback
+journal, and shared VACUUM temporary RRDS clusters, calls the load module, and
+releases all four DD names when the program exits.
 
 ## Installation
 
@@ -16,6 +16,8 @@ Build and deploy the load modules from the workstation:
 
 ```sh
 tools/probe_sqlite_upgrade.sh 3.53.4 stack
+zowe zos-jobs submit local-file jcl/define-vacuum-rrds.jcl \
+  --zosmf-profile hercules --wait-for-output
 PATH=/opt/homebrew/bin:$PWD/build/sdk/bin:/usr/bin:/bin \
   python3 mbt/scripts/mbtdeploy.py \
   --project upgrade/project-3.53.4.toml \
@@ -30,6 +32,8 @@ The default installation uses:
 - load module `IBMUSER.SQLITE.D534.LOAD(SQLI534)`
 - database `IBMUSER.SQLITE.D534DB`, allocated as `SQLDB`
 - journal `IBMUSER.SQLITE.D534JRN`, allocated as `SQLJRN`
+- VACUUM temporary database `IBMUSER.SQLITE.D534TMP`, allocated as `SQLTMP`
+- VACUUM temporary journal `IBMUSER.SQLITE.D534TJR`, allocated as `SQLTJR`
 - command member `SYS2.CMDPROC(SQLITE)`
 
 Start it at a TSO READY prompt:
@@ -61,7 +65,7 @@ Command             Description
 .integrity_check    Run a complete database integrity check
 .foreign_key_check  Report foreign-key violations
 .analyze            Refresh query-planner statistics
-.vacuum             Explain the current RRDS/VACUUM limitation
+.vacuum             Rebuild and compact the database
 .lastid             Show the last inserted rowid
 .headers on|off     Show or hide column headers
 .mode column|list|line|csv  Select output format
@@ -204,14 +208,14 @@ An intact database returns one `ok` row from `.integrity_check`.
 `.foreign_key_check` returns no rows when there are no violations. `.analyze`
 updates SQLite planner statistics through the normal journaled write path.
 
-Full `VACUUM` is deliberately blocked for now. SQLite implements it by opening
-a second temporary database, while the current MVS VFS has only one main RRDS
-DD pair (`SQLDB`/`SQLJRN`). Aliasing that temporary file to `SQLDB` could
-damage the source database. Databases created by this project use
-`auto_vacuum=FULL`, so committed deletes already reclaim trailing RRDS pages.
-The second-DD mapping now supports backup, restore, and ATTACH. A remaining
-VFS change must route SQLite's internally generated VACUUM filename to that
-pair before `.vacuum` can safely be enabled.
+`.vacuum` performs SQLite's full database rebuild using the dedicated
+`SQLTMP`/`SQLTJR` RRDS pair. Run `jcl/define-vacuum-rrds.jcl` once before using
+the command. The pair may be shared by all launchers: a SYSTEM-scope
+`SQLITE/VACUUM` ENQ and MVS dataset serialization allow only one user at a
+time. Stale records left by an interrupted address space are erased on the
+next open, while SQLite's normal rollback journal protects the copy back to
+the main database. Do not redefine or delete either temporary cluster while a
+TSO or batch process is using it.
 
 ## RRDS backup, restore, and attached databases
 

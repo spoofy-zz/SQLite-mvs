@@ -124,6 +124,89 @@ static int runBackupTest(sqlite3 *db)
     return rc;
 }
 
+static int readInteger(sqlite3 *db, const char *sql, int *value)
+{
+    sqlite3_stmt *statement = 0;
+    int rc = sqlite3_prepare_v2(db, sql, -1, &statement, 0);
+    if (rc == SQLITE_OK) rc = sqlite3_step(statement);
+    if (rc == SQLITE_ROW) {
+        *value = sqlite3_column_int(statement, 0);
+        rc = SQLITE_OK;
+    }
+    if (statement) sqlite3_finalize(statement);
+    return rc;
+}
+
+static int runVacuumTest(sqlite3 *db)
+{
+    int before = 0;
+    int after = 0;
+    int rc = readInteger(db, "PRAGMA page_count;", &before);
+    if (rc == SQLITE_OK) rc = runSql(db, "vacuum", "VACUUM;", 0);
+    if (rc == SQLITE_OK) rc = expectValue(db, "vacuum-integrity",
+        "PRAGMA integrity_check;", "ok");
+    if (rc == SQLITE_OK) rc = expectValue(db, "vacuum-stale-cleanup",
+        "SELECT count(*) FROM sqlite_master WHERE name='stale_marker';",
+        "0");
+    if (rc == SQLITE_OK) rc = readInteger(db, "PRAGMA page_count;", &after);
+    printf("vacuum pages before=%d after=%d\n", before, after);
+    printf("SQLITE VACUUM TEST %s\n", rc == SQLITE_OK ? "PASSED" : "FAILED");
+    return rc;
+}
+
+static int leaveStaleVacuumDatabase(void)
+{
+    sqlite3 *temp = 0;
+    int rc = sqlite3_open_v2("SQLTMP:SQLTJR", &temp,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "mvs-rrds");
+    printf("vacuum stale-temp open rc=%d\n", rc);
+    if (rc == SQLITE_OK) rc = runSql(temp, "vacuum-stale-temp",
+        "CREATE TABLE stale_marker(value TEXT);"
+        "INSERT INTO stale_marker VALUES('interrupted vacuum');", 0);
+    printf("vacuum stale-temp exit without sqlite3_close rc=%d\n", rc);
+    fflush(stdout);
+    exit(rc == SQLITE_OK ? 0 : 8);
+    return rc;
+}
+
+static int holdVacuumDatabase(void)
+{
+    sqlite3 *temp = 0;
+    int closeRc = SQLITE_OK;
+    int rc = sqlite3_open_v2("SQLTMP:SQLTJR", &temp,
+        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "mvs-rrds");
+    printf("vacuum-lock holder open rc=%d\n", rc);
+    if (rc == SQLITE_OK) {
+        time_t until = time(0) + 15;
+        printf("vacuum-lock holder acquired; holding 15 seconds\n");
+        fflush(stdout);
+        while (time(0) < until) { }
+    }
+    if (temp) closeRc = sqlite3_close(temp);
+    if (rc == SQLITE_OK) rc = closeRc;
+    printf("vacuum-lock holder close rc=%d\n", closeRc);
+    return rc;
+}
+
+static int probeVacuumLock(sqlite3 *db)
+{
+    char *error = 0;
+    int rc = sqlite3_exec(db, "VACUUM;", 0, 0, &error);
+    printf("vacuum-lock probe rc=%d%s%s\n", rc,
+           error ? " error=" : "", error ? error : "");
+    if (error) sqlite3_free(error);
+    if (rc == SQLITE_BUSY || rc == SQLITE_CANTOPEN) {
+        printf("vacuum-lock probe observed expected exclusion\n");
+        return SQLITE_OK;
+    }
+    if (rc == SQLITE_OK) {
+        printf("vacuum-lock probe acquired after MVS serialization\n");
+        return expectValue(db, "vacuum-lock-integrity",
+                           "PRAGMA integrity_check;", "ok");
+    }
+    return SQLITE_ERROR;
+}
+
 static int runCrashTest(sqlite3 *db)
 {
     int i;
@@ -434,6 +517,14 @@ int main(int argc, char **argv)
         rc = runSeedTestdb(db);
     else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "BACKUP") == 0)
         rc = runBackupTest(db);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "VACTMP") == 0)
+        rc = leaveStaleVacuumDatabase();
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "VACHOLD") == 0)
+        rc = holdVacuumDatabase();
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "VACPROBE") == 0)
+        rc = probeVacuumLock(db);
+    else if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "VACUUM") == 0)
+        rc = runVacuumTest(db);
     else {
     if (rc == SQLITE_OK) rc = runSql(db, "journal", "PRAGMA journal_mode=DELETE;", 0);
     if (rc == SQLITE_OK) rc = runSql(db, "sync", "PRAGMA synchronous=FULL;", 0);

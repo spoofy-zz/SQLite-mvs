@@ -72,6 +72,8 @@ zowe zos-jobs submit local-file jcl/define-upgrade-3.53.4.jcl \
   --zosmf-profile hercules --wait-for-output
 zowe zos-jobs submit local-file jcl/define-backup-rrds.jcl \
   --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file jcl/define-vacuum-rrds.jcl \
+  --zosmf-profile hercules --wait-for-output
 ```
 
 Deploy the current modules to `IBMUSER.SQLITE.D534.LOAD`:
@@ -179,6 +181,8 @@ zowe zos-jobs submit local-file jcl/smoke.jcl \
   --zosmf-profile hercules --wait-for-output
 zowe zos-jobs submit local-file jcl/test-suite.jcl \
   --zosmf-profile hercules --wait-for-output
+zowe zos-jobs submit local-file jcl/vacuum-test.jcl \
+  --zosmf-profile hercules --wait-for-output
 zowe zos-jobs submit local-file jcl/cobol-api-x-test.jcl \
   --zosmf-profile hercules --wait-for-output
 zowe zos-jobs submit local-file kicks/sqlite-search/TEST.jcl \
@@ -260,6 +264,15 @@ This enables SQLite `ATTACH`, online backup/restore through `SQLBAK:SQLBJR`,
 and database-specific SYSTEM ENQ resources while preserving the legacy
 `SQLDB` to `SQLJRN` mapping.
 
+Full `VACUUM` uses a dedicated `SQLTMP:SQLTJR` RRDS pair instead of aliasing
+the source database. The VFS serializes that shared pair with the SYSTEM-scope
+`SQLITE/VACUUM` ENQ, clears stale temporary records before every run, and
+clears the pair again on close. SQLite's normal rollback transaction protects
+the copy back to the main RRDS. `jcl/vacuum-test.jcl` verifies a real compaction,
+`integrity_check`, and recovery after an intentionally abandoned temp database;
+`vacuum-lock-holder.jcl` plus `vacuum-lock-probe.jcl` verify cross-process
+serialization.
+
 Rollback journals are stored in a second RRDS allocated as DD `SQLJRN`.
 RRN 1 contains VFS metadata and journal byte ranges start at RRN 2. The MVS
 test runs with `journal_mode=DELETE` and `synchronous=FULL`; both committed
@@ -294,9 +307,9 @@ CC 0000. Busy-timeout retry is verified by `jcl/lock-holder.jcl` plus
 `jcl/lock-waiter.jcl`; JOB01254 waited five seconds for the holder, acquired
 the lock, and ended CC 0000 while consuming only 0.21 CPU seconds.
 
-Run `jcl/define-upgrade-3.53.4.jcl` before the first test and `jcl/smoke.jcl`
-to execute `SQLT534`. `jcl/print-rrds.jcl` is available for raw record
-inspection.
+Run `jcl/define-upgrade-3.53.4.jcl` and `jcl/define-vacuum-rrds.jcl` before the
+first test, then use `jcl/smoke.jcl` and `jcl/vacuum-test.jcl` to execute
+`SQLT534`. `jcl/print-rrds.jcl` is available for raw record inspection.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
 See `README-TESTING-MVS.md` for interactive TSO use plus build, deployment,

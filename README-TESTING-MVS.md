@@ -87,8 +87,8 @@ include `.help`, `.tables`, `.indexes [table]`, `.schema [table]`,
 `.tableinfo table`, `.databases`, `.foreignkeys`, `.stats`, `.lastid`,
 `.headers`, `.mode column|list|line|csv`, `.separator`, `.changes`, `.timer`,
 `.trace`, `.read`, `.output`, `.once`, `.integrity_check`,
-`.foreign_key_check`, `.analyze`, `.dump`, `.reset`, `.version`, `.quit`, and
-`.exit`.
+`.foreign_key_check`, `.analyze`, `.vacuum`, `.dump`, `.reset`, `.version`,
+`.quit`, and `.exit`.
 Column mode is the default and underlines
 its headers; list mode uses a configurable separator; line mode is convenient
 for wide rows. PF3 is an immediate exit key; Clear discards a partially
@@ -102,8 +102,10 @@ from TSO READY:
 ```text
 ALLOC FI(SQLDB) DA('IBMUSER.SQLITE.D534DB') SHR
 ALLOC FI(SQLJRN) DA('IBMUSER.SQLITE.D534JRN') SHR
+ALLOC FI(SQLTMP) DA('IBMUSER.SQLITE.D534TMP') SHR
+ALLOC FI(SQLTJR) DA('IBMUSER.SQLITE.D534TJR') SHR
 CALL 'IBMUSER.SQLITE.D534.LOAD(SQLI534)'
-FREE FI(SQLDB SQLJRN)
+FREE FI(SQLDB SQLJRN SQLTMP SQLTJR)
 ```
 
 Do not run `jcl/define-upgrade-3.53.4.jcl` while the interactive client is
@@ -122,6 +124,13 @@ zowe zos-jobs submit local-file jcl/define-upgrade-3.53.4.jcl \
 ```
 
 Expected result: `SQLT534D`, `CC 0000`.
+
+Define the shared VACUUM work pair once as well:
+
+```sh
+zowe zos-jobs submit local-file jcl/define-vacuum-rrds.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
 
 ## SQL smoke test
 
@@ -194,6 +203,25 @@ key cascades, and cleanup. It passes with `CC 0000` and the final line:
 SQLITE MVS TEST SUITE PASSED
 ```
 
+## VACUUM, interruption recovery, and concurrency
+
+Run the two-step functional/recovery test:
+
+```sh
+zowe zos-jobs submit local-file jcl/vacuum-test.jcl \
+  --zosmf-profile hercules --wait-for-output
+```
+
+The first step intentionally exits without closing its temporary database.
+The second step must clear that stale image, complete `VACUUM`, return `ok`
+from `integrity_check`, and end with `SQLITE VACUUM TEST PASSED` and CC 0000.
+
+To test serialization, submit `jcl/vacuum-lock-holder.jcl` without waiting,
+then submit `jcl/vacuum-lock-probe.jcl`. On systems where allocation waits, the
+probe runs after the holder releases the RRDS pair; otherwise the VFS reports
+controlled exclusion. The probe must finish CC 0000 and pass its final
+integrity check.
+
 ## TSO-to-batch locking test
 
 Start `SQLITE` at TSO READY, then hold an uncommitted writer transaction:
@@ -265,4 +293,6 @@ The test program is `SQLT534`. At minimum its JCL needs:
 //STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.D534.LOAD
 //SQLDB   DD DISP=SHR,DSN=IBMUSER.SQLITE.D534DB
 //SQLJRN  DD DISP=SHR,DSN=IBMUSER.SQLITE.D534JRN
+//SQLTMP  DD DISP=SHR,DSN=IBMUSER.SQLITE.D534TMP
+//SQLTJR  DD DISP=SHR,DSN=IBMUSER.SQLITE.D534TJR
 ```

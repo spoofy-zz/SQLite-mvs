@@ -688,8 +688,10 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
     } else if (equalIgnoreCase(line, ".analyze")) {
         executeSql(db, shell, "ANALYZE;");
     } else if (equalIgnoreCase(line, ".vacuum")) {
-        tsoOut("UNSUPPORTED: VACUUM needs a second RRDS temporary database");
-        tsoOut("Use auto_vacuum=FULL; raw RRDS aliasing is intentionally blocked");
+        if (sqlite3_get_autocommit(db) == 0)
+            tsoOut("ERROR: .vacuum cannot run inside a transaction");
+        else
+            executeSql(db, shell, "VACUUM;");
     } else if (equalIgnoreCase(line, ".lastid")) {
         tsoOut("Last insert rowid");
         tsoOut("-----------------");

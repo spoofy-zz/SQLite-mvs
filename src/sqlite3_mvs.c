@@ -15,8 +15,11 @@ extern int usleep(unsigned usec);
 #define MVS_PAGE_SIZE 4096
 #define MVS_DDNAME "SQLDB"
 #define MVS_JOURNAL_DDNAME "SQLJRN"
+#define MVS_TEMP_DDNAME "SQLTMP"
+#define MVS_TEMP_JOURNAL_DDNAME "SQLTJR"
 #define MVS_JOURNAL_MAGIC "MVSJRN01"
 #define MVS_LOCK_QNAME "SQLITE"
+#define MVS_VACUUM_LOCK "VACUUM"
 
 typedef struct MvsFile MvsFile;
 struct MvsFile {
@@ -30,6 +33,7 @@ struct MvsFile {
     char lockPending[18];
     unsigned dataRrn;
     int journal;
+    int vacuum;
 };
 
 static int mvsValidDd(const char *name, int length)
@@ -53,6 +57,11 @@ static int mvsNames(const char *name, int journal, char *database,
     char base[32];
     int length;
     if (!name) name = MVS_DDNAME;
+    if (!*name || strcmp(name, "-journal") == 0) {
+        strcpy(database, MVS_TEMP_DDNAME);
+        strcpy(journalName, MVS_TEMP_JOURNAL_DDNAME);
+        return 1;
+    }
     length = (int)strlen(name);
     if (length >= (int)sizeof(base)) return 0;
     strcpy(base, name);
@@ -97,6 +106,9 @@ static int mvsSectorSize(sqlite3_file *file);
 static int mvsDeviceCharacteristics(sqlite3_file *file);
 static int mvsWritePage(MvsFile *file, unsigned rrn,
                         const unsigned char *page);
+static int mvsClearRrds(const char *ddname, unsigned dataRrn);
+static int mvsEnq(const char *resource, unsigned options);
+static int mvsDeq(const char *resource);
 
 static const sqlite3_io_methods mvsIoMethods = {
     1, mvsClose, mvsRead, mvsWrite, mvsTruncate, mvsSync, mvsFileSize,
@@ -173,6 +185,42 @@ static int mvsWritePage(MvsFile *file, unsigned rrn, const unsigned char *page)
     return SQLITE_IOERR_WRITE;
 }
 
+/* RRDS files survive an address-space failure.  VACUUM's anonymous database
+ * does not: it must look like a newly created empty file on every attempt.
+ * Database and journal records are contiguous, so the first missing RRN is
+ * the end of the logical file even when the prior task ended abruptly. */
+static int mvsClearOpenRrds(MvsFile *file)
+{
+    unsigned char page[MVS_PAGE_SIZE];
+    unsigned rrn = 1;
+    while (mvsReadPage(file, rrn, page)) {
+        if (__vsdel(file->vs, page, MVS_PAGE_SIZE) != 0) {
+            __vsclr(file->vs);
+            return SQLITE_IOERR_DELETE;
+        }
+        rrn++;
+    }
+    file->size = 0;
+    file->dataRrn = file->journal ? 2 : 1;
+    return SQLITE_OK;
+}
+
+static int mvsClearRrds(const char *ddname, unsigned dataRrn)
+{
+    MvsFile file;
+    int rc;
+    memset(&file, 0, sizeof(file));
+    strcpy(file.ddname, ddname);
+    file.dataRrn = dataRrn;
+    file.journal = dataRrn == 2;
+    rc = __vsopen(file.ddname, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
+                  &file.vs);
+    if (rc != 0 || file.vs == 0) return SQLITE_CANTOPEN;
+    rc = mvsClearOpenRrds(&file);
+    if (__vsclos(file.vs) != 0 && rc == SQLITE_OK) rc = SQLITE_IOERR_CLOSE;
+    return rc;
+}
+
 static int mvsClose(sqlite3_file *base)
 {
     MvsFile *file = (MvsFile *)base;
@@ -180,8 +228,18 @@ static int mvsClose(sqlite3_file *base)
     if (file->lock != SQLITE_LOCK_NONE &&
         mvsUnlock(base, SQLITE_LOCK_NONE) != SQLITE_OK)
         rc = SQLITE_IOERR_UNLOCK;
-    if (file->vs && __vsclos(file->vs) != 0) rc = SQLITE_IOERR_CLOSE;
+    if (file->vacuum && file->vs &&
+        mvsClearOpenRrds(file) != SQLITE_OK) rc = SQLITE_IOERR_DELETE;
+    if (file->vs && __vsclos(file->vs) != 0 && rc == SQLITE_OK)
+        rc = SQLITE_IOERR_CLOSE;
     file->vs = 0;
+    if (file->vacuum) {
+        int cleanRc = mvsClearRrds(MVS_TEMP_JOURNAL_DDNAME, 2);
+        if (cleanRc != SQLITE_OK && rc == SQLITE_OK) rc = cleanRc;
+        if (mvsDeq(MVS_VACUUM_LOCK) != 0 && rc == SQLITE_OK)
+            rc = SQLITE_IOERR_UNLOCK;
+        file->vacuum = 0;
+    }
     file->base.pMethods = 0;
     return rc;
 }
@@ -394,6 +452,11 @@ static int mvsOpen(sqlite3_vfs *vfs, const char *name, sqlite3_file *base,
         strcpy(file->ddname, database);
         mvsLockNames(file, database);
         file->dataRrn = 1;
+        if (strcmp(database, MVS_TEMP_DDNAME) == 0) {
+            rc = mvsEnq(MVS_VACUUM_LOCK, ENQ_USE | ENQ_EXC);
+            if (rc != 0) return SQLITE_BUSY;
+            file->vacuum = 1;
+        }
     } else if (flags & SQLITE_OPEN_MAIN_JOURNAL) {
         if (!mvsNames(name, 1, database, journalName)) return SQLITE_CANTOPEN;
         strcpy(file->ddname, journalName);
@@ -405,8 +468,23 @@ static int mvsOpen(sqlite3_vfs *vfs, const char *name, sqlite3_file *base,
     }
     rc = __vsopen(file->ddname, VSTYPE_RRDS, VSACCESS_DIR, VSMODE_UPD,
                   &file->vs);
-    if (rc != 0 || file->vs == 0) return SQLITE_CANTOPEN;
+    if (rc != 0 || file->vs == 0) {
+        if (file->vacuum) {
+            mvsDeq(MVS_VACUUM_LOCK);
+            file->vacuum = 0;
+        }
+        return SQLITE_CANTOPEN;
+    }
     file->base.pMethods = &mvsIoMethods;
+    if (file->vacuum) {
+        rc = mvsClearOpenRrds(file);
+        if (rc == SQLITE_OK)
+            rc = mvsClearRrds(MVS_TEMP_JOURNAL_DDNAME, 2);
+        if (rc != SQLITE_OK) {
+            mvsClose(base);
+            return rc;
+        }
+    }
     if (mvsReadPage(file, 1, first)) {
         if (file->journal && memcmp(first, MVS_JOURNAL_MAGIC, 8) == 0)
             file->size = (sqlite3_int64)mvsGet32(first + 8);
@@ -492,6 +570,7 @@ static int mvsFullPathname(sqlite3_vfs *vfs, const char *name, int outSize,
     size_t length;
     (void)vfs;
     if (!name) name = MVS_DDNAME;
+    if (!*name) name = MVS_TEMP_DDNAME ":" MVS_TEMP_JOURNAL_DDNAME;
     length = strlen(name);
     if ((int)length >= outSize) return SQLITE_CANTOPEN;
     memcpy(out, name, length + 1);

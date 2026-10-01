@@ -18,6 +18,9 @@ The former 3.8.11.1 `IBMUSER.SQLITE.LOAD` deployment has been retired.
 | Backup, restore, ATTACH | JOB01350, CC 0000 |
 | Lock holder | JOB01357, CC 0000 |
 | Busy-timeout waiter | JOB01358, CC 0000, waited 10 seconds |
+| VACUUM stale-temp recovery | JOB02623, CC 0000, 10 pages reduced to 7 |
+| VACUUM concurrent holder/probe | JOB02631/JOB02632, both CC 0000 |
+| Post-VACUUM regression/backup/KICKS | JOB02633-JOB02636, all CC 0000 |
 
 The KICKS batch scenario exercised initial search, both result pages, the
 last-page boundary, previous-page navigation, clear, person orders, and the
@@ -39,6 +42,7 @@ Active datasets are:
 - `IBMUSER.SQLITE.D534.LOAD`
 - `IBMUSER.SQLITE.D534DB` and `D534JRN`
 - `IBMUSER.SQLITE.D534BAK` and `D534BJR`
+- `IBMUSER.SQLITE.D534TMP` and `D534TJR` (shared VACUUM work pair)
 
 KICKS intentionally uses the existing sample `TESTDB` and `TESTJRN`, so the
 same people/orders data and application behavior can be compared directly

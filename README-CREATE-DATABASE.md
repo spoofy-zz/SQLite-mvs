@@ -47,8 +47,11 @@ zowe zos-files upload file-to-data-set clist/MYDB.clist \
   'SYS2.CMDPROC(MYDB)' --zosmf-profile hercules
 ```
 
-The CLIST allocates the selected clusters as `SQLDB` and `SQLJRN`, calls the
-shared `IBMUSER.SQLITE.D534.LOAD(SQLI534)` module, then frees both DD names.
+The CLIST allocates the selected clusters as `SQLDB` and `SQLJRN`, plus the
+installation-wide `IBMUSER.SQLITE.D534TMP`/`D534TJR` pair as `SQLTMP` and
+`SQLTJR`. It calls the shared `IBMUSER.SQLITE.D534.LOAD(SQLI534)` module, then
+frees all four DD names. Define the shared pair once with
+`jcl/define-vacuum-rrds.jcl`.
 
 ## 4. Initialize the schema
 
@@ -84,6 +87,8 @@ Any batch program using this VFS selects the same database with DD statements:
 //STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.D534.LOAD
 //SQLDB   DD DISP=SHR,DSN=YOURID.SQLITE.MYDB
 //SQLJRN  DD DISP=SHR,DSN=YOURID.SQLITE.MYJRN
+//SQLTMP  DD DISP=SHR,DSN=IBMUSER.SQLITE.D534TMP
+//SQLTJR  DD DISP=SHR,DSN=IBMUSER.SQLITE.D534TJR
 ```
 
 Do not redefine or delete either cluster while TSO or batch has it open.
