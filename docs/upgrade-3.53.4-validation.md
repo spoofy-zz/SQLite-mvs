@@ -1,8 +1,8 @@
 # SQLite 3.53.4 full-stack validation
 
-SQLite 3.53.4 is deployed as an isolated candidate in
-`IBMUSER.SQLITE.D534.LOAD`. The stable `IBMUSER.SQLITE.LOAD` deployment is
-unchanged, while the validated 3.53.4 build and tests are now part of `main`.
+SQLite 3.53.4 is the active deployment in `IBMUSER.SQLITE.D534.LOAD`. The
+standard `SQLITE` command and versioned `SQL534` alias both start this stack.
+The former 3.8.11.1 `IBMUSER.SQLITE.LOAD` deployment has been retired.
 
 ## Validated components
 
@@ -26,15 +26,15 @@ only STEPLIB was changed to select the 3.53.4 `SQLITEX` implementation.
 
 ## Interactive commands
 
-Use `SQL534` for the SQLite 3.53.4 TSO shell. Use `SQLK534` to start the
-existing KICKS application with the 3.53.4 API. Within KICKS, enter `SQLS`.
+Use `SQLITE` (or its `SQL534` alias) for the SQLite 3.53.4 TSO shell. Use
+`SQLK534` to start the existing KICKS application with the 3.53.4 API. Within KICKS, enter `SQLS`.
 The command is installed as `SYS2.CMDPROC(SQLK534)`.
 
 The candidate deploy replaces the complete `D534.LOAD` PDS. After every
 redeploy, submit `kicks/sqlite-search/STARTUP-3.53.4.jcl` to copy `KIKSIP1$`
 back into that PDS before starting `SQLK534`.
 
-Candidate datasets are:
+Active datasets are:
 
 - `IBMUSER.SQLITE.D534.LOAD`
 - `IBMUSER.SQLITE.D534DB` and `D534JRN`

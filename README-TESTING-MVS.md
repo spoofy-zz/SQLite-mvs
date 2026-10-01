@@ -1,16 +1,15 @@
 # Testing SQLite on MVS 3.8j
 
-The current validated SQLite version is **3.53.4**. The plain `make probe`
-instructions below exercise the retained 3.8.11.1 bootstrap baseline. For the
-current full stack use:
+The current validated and deployed SQLite version is **3.53.4**. Build the
+full stack with:
 
 ```sh
 tools/probe_sqlite_upgrade.sh 3.53.4 stack
 ```
 
-The current interactive commands are `SQL534` for TSO and `SQLK534` for
-KICKS. See `docs/upgrade-3.53.4-validation.md` for deployment datasets and the
-full test matrix.
+The standard interactive command is `SQLITE`; `SQL534` is its versioned alias.
+Use `SQLK534` for KICKS. See `docs/upgrade-3.53.4-validation.md` for deployment
+datasets and the full test matrix.
 
 These commands are run from the project directory on the workstation. They
 submit the supplied JCL through the Zowe profile named `hercules`.
@@ -18,19 +17,20 @@ submit the supplied JCL through the Zowe profile named `hercules`.
 ## Build and deploy
 
 Build the host-side cc370/libc370 SDK once, then compile, link, and deploy the
-`SQLTTEST` batch test and `SQLITSO` interactive load modules:
+`SQLT534` batch test, `SQLI534` TSO client, and COBOL APIs:
 
 ```sh
 git submodule update --init --recursive
 make sdk
-make probe
-make tso
+tools/probe_sqlite_upgrade.sh 3.53.4 stack
 PATH=/opt/homebrew/bin:$PWD/build/sdk/bin:/usr/bin:/bin \
   python3 mbt/scripts/mbtdeploy.py \
-  --project project.toml --builddir build --ld "$PWD/build/sdk/bin/ld370"
+  --project upgrade/project-3.53.4.toml \
+  --builddir build/upgrades/3.53.4/probe \
+  --ld "$PWD/build/sdk/bin/ld370"
 ```
 
-The deploy target is `IBMUSER.SQLITE.LOAD`.
+The deploy target is `IBMUSER.SQLITE.D534.LOAD`.
 
 ## Interactive TSO client
 
@@ -48,15 +48,15 @@ At a TSO READY prompt, enter:
 SQLITE
 ```
 
-The legacy `SQLITE` command displays the vendored baseline banner:
+The `SQLITE` command displays the current banner:
 
 ```text
-SQLite 3.8.11.1 for MVS TSO
+SQLite 3.53.4 for MVS TSO
 Use .help for commands
 sqlite>
 ```
 
-The current `SQL534` command instead displays `SQLite 3.53.4 for MVS TSO`.
+The `SQL534` alias displays the same version.
 
 Example session:
 
@@ -99,14 +99,14 @@ To invoke the load module without installing the CLIST, use these commands
 from TSO READY:
 
 ```text
-ALLOC FI(SQLDB) DA('IBMUSER.SQLITE.RRDS') SHR
-ALLOC FI(SQLJRN) DA('IBMUSER.SQLITE.JOURNAL') SHR
-CALL 'IBMUSER.SQLITE.LOAD(SQLITSO)'
+ALLOC FI(SQLDB) DA('IBMUSER.SQLITE.D534DB') SHR
+ALLOC FI(SQLJRN) DA('IBMUSER.SQLITE.D534JRN') SHR
+CALL 'IBMUSER.SQLITE.D534.LOAD(SQLI534)'
 FREE FI(SQLDB SQLJRN)
 ```
 
-Do not run `jcl/define-rrds.jcl` while the interactive client is open: that
-job deletes and recreates both VSAM clusters. The client is a foreground TSO
+Do not run `jcl/define-upgrade-3.53.4.jcl` while the interactive client is
+open: that job deletes and recreates both VSAM clusters. The client is a foreground TSO
 program because its input/output wrappers use the TGET and TPUT services; it
 is not intended to run under batch JCL.
 
@@ -116,11 +116,11 @@ This deletes and recreates the test VSAM clusters, so do not run it when their
 contents must be preserved:
 
 ```sh
-zowe zos-jobs submit local-file jcl/define-rrds.jcl \
+zowe zos-jobs submit local-file jcl/define-upgrade-3.53.4.jcl \
   --zosmf-profile hercules --wait-for-output
 ```
 
-Expected result: `SQLTDEF`, `CC 0000`.
+Expected result: `SQLT534D`, `CC 0000`.
 
 ## SQL smoke test
 
@@ -146,7 +146,7 @@ id=1 value=MVS RRDS
 select rc=0
 ```
 
-Run the same smoke JCL again without running `define-rrds.jcl`. The selected
+Run the same smoke JCL again without running `define-upgrade-3.53.4.jcl`. The selected
 row should then have `id=2`, proving persistence across MVS jobs.
 
 ## Concurrent-writer locking test
@@ -258,10 +258,10 @@ zowe zos-jobs submit local-file jcl/print-rrds.jcl \
 
 ## Required MVS allocations
 
-The test program is `SQLTTEST`. At minimum its JCL needs:
+The test program is `SQLT534`. At minimum its JCL needs:
 
 ```jcl
-//STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.LOAD
-//SQLDB   DD DISP=SHR,DSN=IBMUSER.SQLITE.RRDS
-//SQLJRN  DD DISP=SHR,DSN=IBMUSER.SQLITE.JOURNAL
+//STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.D534.LOAD
+//SQLDB   DD DISP=SHR,DSN=IBMUSER.SQLITE.D534DB
+//SQLJRN  DD DISP=SHR,DSN=IBMUSER.SQLITE.D534JRN
 ```

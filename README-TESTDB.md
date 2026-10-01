@@ -30,7 +30,7 @@ SQLITE TESTDB CREATED
 ```
 
 This operation destroys and recreates testdb. It does not modify the regular
-`IBMUSER.SQLITE.RRDS` database used by the `SQLITE` command.
+`IBMUSER.SQLITE.D534DB` database used by the `SQLITE` command.
 
 ## Open from TSO
 

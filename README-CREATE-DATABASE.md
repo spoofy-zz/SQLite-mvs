@@ -5,7 +5,7 @@ An SQLite MVS database consists of two VSAM RRDS clusters and two DD names:
 - `SQLDB` selects the RRDS containing 4096-byte SQLite pages.
 - `SQLJRN` selects the RRDS used for the rollback journal.
 
-The SQLite filename passed by `SQLITSO` is a logical name. The actual database
+The SQLite filename passed by `SQLI534` is a logical name. The actual database
 is selected by the datasets allocated to these DD names. Therefore no VFS or
 load-module rebuild is needed for each new database.
 
@@ -48,7 +48,7 @@ zowe zos-files upload file-to-data-set clist/MYDB.clist \
 ```
 
 The CLIST allocates the selected clusters as `SQLDB` and `SQLJRN`, calls the
-shared `IBMUSER.SQLITE.LOAD(SQLITSO)` module, then frees both DD names.
+shared `IBMUSER.SQLITE.D534.LOAD(SQLI534)` module, then frees both DD names.
 
 ## 4. Initialize the schema
 
@@ -81,7 +81,7 @@ Open the same command later to reuse the persisted database.
 Any batch program using this VFS selects the same database with DD statements:
 
 ```jcl
-//STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.LOAD
+//STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.D534.LOAD
 //SQLDB   DD DISP=SHR,DSN=YOURID.SQLITE.MYDB
 //SQLJRN  DD DISP=SHR,DSN=YOURID.SQLITE.MYJRN
 ```

@@ -1,11 +1,11 @@
 # SQLite TSO command-line program
 
 The current validated engine is SQLite **3.53.4**, exposed as load module
-`SQLI534` and TSO command `SQL534`. The `SQLITSO`/`SQLITE` names below describe
-the retained 3.8.11.1 bootstrap installation and remain available for
-side-by-side testing.
+`SQLI534` and the standard TSO command `SQLITE`. `SQL534` is retained as an
+explicit versioned alias. The 3.8.11.1 bootstrap is source-only and is no
+longer installed on the host.
 
-`SQLITSO` is an interactive SQLite command-line program for a foreground TSO
+`SQLI534` is an interactive SQLite command-line program for a foreground TSO
 session on MVS 3.8j. The `SQLITE` CLIST allocates the database and rollback
 journal RRDS clusters, calls the load module, and releases both DD names when
 the program exits.
@@ -15,19 +15,21 @@ the program exits.
 Build and deploy the load modules from the workstation:
 
 ```sh
-make tso
+tools/probe_sqlite_upgrade.sh 3.53.4 stack
 PATH=/opt/homebrew/bin:$PWD/build/sdk/bin:/usr/bin:/bin \
   python3 mbt/scripts/mbtdeploy.py \
-  --project project.toml --builddir build --ld "$PWD/build/sdk/bin/ld370"
+  --project upgrade/project-3.53.4.toml \
+  --builddir build/upgrades/3.53.4/probe \
+  --ld "$PWD/build/sdk/bin/ld370"
 zowe zos-files upload file-to-data-set clist/SQLITE.clist \
   'SYS2.CMDPROC(SQLITE)' --zosmf-profile hercules
 ```
 
 The default installation uses:
 
-- load module `IBMUSER.SQLITE.LOAD(SQLITSO)`
-- database `IBMUSER.SQLITE.RRDS`, allocated as `SQLDB`
-- journal `IBMUSER.SQLITE.JOURNAL`, allocated as `SQLJRN`
+- load module `IBMUSER.SQLITE.D534.LOAD(SQLI534)`
+- database `IBMUSER.SQLITE.D534DB`, allocated as `SQLDB`
+- journal `IBMUSER.SQLITE.D534JRN`, allocated as `SQLJRN`
 - command member `SYS2.CMDPROC(SQLITE)`
 
 Start it at a TSO READY prompt:
@@ -83,7 +85,7 @@ Command             Description
 .quit / .exit       Return to TSO READY
 ```
 
-For the current `SQL534` client, `.version` reports the active engine rather
+For the current `SQLITE` client, `.version` reports the active engine rather
 than a documentation constant. Its output begins with:
 
 ```text
@@ -210,8 +212,8 @@ Submit `jcl/define-backup-rrds.jcl` once, install
 shell with `SQLITADM`. It allocates:
 
 ```text
-SQLBAK -> IBMUSER.SQLITE.BACKUP
-SQLBJR -> IBMUSER.SQLITE.BACKJRN
+SQLBAK -> IBMUSER.SQLITE.D534BAK
+SQLBJR -> IBMUSER.SQLITE.D534BJR
 ```
 
 Then use:
@@ -253,7 +255,7 @@ an incomplete SQL statement.
 ## Locking and concurrent use
 
 Keep transactions short. To verify TSO-to-batch exclusion, enter this in
-`SQLITSO` and leave the transaction open:
+`SQLITE` and leave the transaction open:
 
 ```sql
 BEGIN IMMEDIATE;
@@ -274,7 +276,7 @@ should complete after the holder commits instead of immediately reporting
 `database is locked`.
 
 Only run one command against a given TSO session at a time. Do not delete or
-redefine the RRDS clusters while `SQLITSO` is open. If a terminal emulator is
+redefine the RRDS clusters while `SQLITE` is open. If a terminal emulator is
 closed without `.quit` or PF3, log off or cancel that TSO address space before
 trying to redefine the clusters.
 
@@ -283,9 +285,9 @@ trying to redefine the clusters.
 Without the CLIST:
 
 ```text
-ALLOC FI(SQLDB) DA('IBMUSER.SQLITE.RRDS') SHR
-ALLOC FI(SQLJRN) DA('IBMUSER.SQLITE.JOURNAL') SHR
-CALL 'IBMUSER.SQLITE.LOAD(SQLITSO)'
+ALLOC FI(SQLDB) DA('IBMUSER.SQLITE.D534DB') SHR
+ALLOC FI(SQLJRN) DA('IBMUSER.SQLITE.D534JRN') SHR
+CALL 'IBMUSER.SQLITE.D534.LOAD(SQLI534)'
 FREE FI(SQLDB SQLJRN)
 ```
 

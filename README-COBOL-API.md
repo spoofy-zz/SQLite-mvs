@@ -3,8 +3,7 @@
 `SQLITEA` lets an OS/VS COBOL program execute SQL against the SQLite RRDS
 database selected by DD names `SQLDB` and `SQLJRN`. The implementation uses
 the real SQLite engine and the same MVS VFS as the TSO shell. The current
-validated API build uses SQLite **3.53.4**; the vendored bootstrap build uses
-3.8.11.1.
+validated and deployed API build uses SQLite **3.53.4**.
 
 This is the first API version: one COBOL call executes one SQL buffer and
 returns formatted EBCDIC text. It deliberately establishes and tears down a C
@@ -64,8 +63,8 @@ Build the API load module and bridge:
 make cobol-api cobol-bridge
 ```
 
-Normal MBT deployment now installs four members in
-`IBMUSER.SQLITE.LOAD`: `SQLTTEST`, `SQLITSO`, `SQLITEA`, and `SQLITEX`.
+The current deployment installs four members in
+`IBMUSER.SQLITE.D534.LOAD`: `SQLT534`, `SQLI534`, `SQLITEA`, and `SQLITEX`.
 
 The bridge must be a sequential FB80 object dataset. The combined bridge
 exports both `SQLITEA` and `SQLITEX`. Create and upload it:
@@ -115,7 +114,7 @@ BMS search screen, transaction definitions, build JCL, and a TSO launcher.
 ## Required execution DD statements
 
 ```jcl
-//STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.LOAD
+//STEPLIB DD DISP=SHR,DSN=IBMUSER.SQLITE.D534.LOAD
 //SQLDB   DD DISP=SHR,DSN=IBMUSER.SQLITE.TESTDB
 //SQLJRN  DD DISP=SHR,DSN=IBMUSER.SQLITE.TESTJRN
 ```

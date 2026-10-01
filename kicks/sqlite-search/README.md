@@ -115,12 +115,12 @@ zowe zos-files upload file-to-data-set kicks/sqlite-search/SQLKICKS.clist \
 
 All seven build jobs should end with `CC 0000`. The generated members are in
 `IBMUSER.SQLITE.KLOAD`; the SQLite API itself remains in
-`IBMUSER.SQLITE.LOAD`.
+`IBMUSER.SQLITE.D534.LOAD`.
 
 `STARTUP.jcl` is required for the COBOL bridge. The CLIST invokes the private
-`IBMUSER.SQLITE.LOAD(KIKSIP1$)` copy, which makes that library the MVS TASKLIB
+`IBMUSER.SQLITE.D534.LOAD(KIKSIP1$)` copy, which makes that library the MVS TASKLIB
 and lets the bridge's `LOAD EP=SQLITEA` find the API module. Merely placing
-`IBMUSER.SQLITE.LOAD` in the KICKS `SKIKLOAD` concatenation is not sufficient
+`IBMUSER.SQLITE.D534.LOAD` in the KICKS `SKIKLOAD` concatenation is not sufficient
 for an MVS LOAD issued by an application program.
 
 For a non-interactive runtime check, submit `TEST.jcl` and inspect its

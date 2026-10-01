@@ -11,7 +11,7 @@ recovery, concurrent batch writers, and the KICKS people/orders application.
 | Role | SQLite version | MVS modules |
 |---|---|---|
 | Current validated stack | **3.53.4** | `SQLT534`, `SQLI534`, `SQLITEA`, `SQLITEX` |
-| Vendored bootstrap baseline | 3.8.11.1 | `SQLTTEST`, `SQLITSO` |
+| Source-only bootstrap baseline | 3.8.11.1 | `SQLTTEST`, `SQLITSO` |
 
 The project is intentionally staged:
 
@@ -97,19 +97,20 @@ smoke job detects the journal, rolls the database back, reports
 `crash_rows=0`, and completes with CC 0000.
 
 An interactive foreground TSO client is included as `SQLI534` for the current
-SQLite 3.53.4 stack (`SQL534` command), with legacy `SQLITSO`/`SQLITE` retained
-for the vendored baseline. It accepts multi-line SQL, prints query columns and
+SQLite 3.53.4 stack. `SQLITE` is the standard command and `SQL534` remains an
+explicit versioned alias. It accepts multi-line SQL, prints query columns and
 rows, and supports configurable column/list output, headers, widths, NULL text,
 SQL echo, busy timeout, schema/database inspection, and clean PF3 exit. The
-`SQL534` CLIST allocates the current-version RRDS pair and invokes `SQLI534`:
+Both CLISTs allocate the current-version RRDS pair and invoke `SQLI534`:
 
 ```text
-SQL534
+SQLITE
 ```
 
 Build the current stack with `tools/probe_sqlite_upgrade.sh 3.53.4 stack`.
-Install `clist/SQL534.clist` as `SYS2.CMDPROC(SQL534)`. The legacy baseline is
-still built with `make tso` and exposed by `clist/SQLITE.clist`.
+Install `clist/SQLITE.clist` as `SYS2.CMDPROC(SQLITE)` and optionally install
+`clist/SQL534.clist` as `SYS2.CMDPROC(SQL534)`. The 3.8.11.1 baseline remains
+in the repository for compiler reproducibility but is no longer deployed.
 
 `jcl/test-suite.jcl` runs a broader SQL regression suite covering DDL, indexes,
 joins, aggregates, NULL handling, rollback, savepoints, constraints, blobs,
@@ -118,8 +119,9 @@ CC 0000. Busy-timeout retry is verified by `jcl/lock-holder.jcl` plus
 `jcl/lock-waiter.jcl`; JOB01254 waited five seconds for the holder, acquired
 the lock, and ended CC 0000 while consuming only 0.21 CPU seconds.
 
-Run `jcl/define-rrds.jcl` before the first test and `jcl/smoke.jcl` to execute
-`SQLTTEST`. `jcl/print-rrds.jcl` is available for raw record inspection.
+Run `jcl/define-upgrade-3.53.4.jcl` before the first test and `jcl/smoke.jcl`
+to execute `SQLT534`. `jcl/print-rrds.jcl` is available for raw record
+inspection.
 
 See `docs/compiler-probe.md` for the exact configuration and current findings.
 See `README-TESTING-MVS.md` for interactive TSO use plus build, deployment,
