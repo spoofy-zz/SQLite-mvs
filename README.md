@@ -120,8 +120,8 @@ zowe zos-files upload file-to-data-set clist/TESTDB.clist \
   'SYS2.CMDPROC(TESTDB)' --zosmf-profile hercules
 zowe zos-files upload file-to-data-set clist/SQLITADM.clist \
   'SYS2.CMDPROC(SQLITADM)' --zosmf-profile hercules
-zowe zos-files upload file-to-data-set clist/SQLK534.clist \
-  'SYS2.CMDPROC(SQLK534)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set clist/SQLKICKS.clist \
+  'SYS2.CMDPROC(SQLKICKS)' --zosmf-profile hercules
 ```
 
 `SQLITE` and `SQL534` open `D534DB`; `TESTDB` opens the separate KICKS sample.
@@ -194,7 +194,7 @@ SELECT count(*) FROM people;
 .quit
 ```
 
-Start the KICKS application with `SQLK534`, then enter transaction `SQLS`.
+Start the KICKS application with `SQLKICKS`, then enter transaction `SQLS`.
 Search by name or city, use PF6 for detail, and PF3 to leave the transaction.
 See `README-TSO.md` and `kicks/sqlite-search/README.md` for the complete command
 and screen references.

@@ -27,12 +27,12 @@ only STEPLIB was changed to select the 3.53.4 `SQLITEX` implementation.
 ## Interactive commands
 
 Use `SQLITE` (or its `SQL534` alias) for the SQLite 3.53.4 TSO shell. Use
-`SQLK534` to start the existing KICKS application with the 3.53.4 API. Within KICKS, enter `SQLS`.
-The command is installed as `SYS2.CMDPROC(SQLK534)`.
+`SQLKICKS` to start the existing KICKS application with the 3.53.4 API. Within KICKS, enter `SQLS`.
+The command is installed as `SYS2.CMDPROC(SQLKICKS)`.
 
 The candidate deploy replaces the complete `D534.LOAD` PDS. After every
 redeploy, submit `kicks/sqlite-search/STARTUP-3.53.4.jcl` to copy `KIKSIP1$`
-back into that PDS before starting `SQLK534`.
+back into that PDS before starting `SQLKICKS`.
 
 Active datasets are:
 

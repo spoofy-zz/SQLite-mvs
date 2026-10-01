@@ -6,7 +6,7 @@ prefix, displays ten people per page, and displays a person's orders by ID.
 It uses typed `SQLITEX` binds and result cells.
 
 The application is validated with the current SQLite **3.53.4** stack. Use
-`SQLK534` to start it.
+`SQLKICKS` to start it.
 
 The application follows the same layout as the KICKS `fuel` and `store`
 samples: a BMS map, an OS/VS COBOL command-level program, separate PCT/PPT
@@ -61,7 +61,7 @@ PF5 for person 1 displayed orders 101/BOOK, 102/PEN, and 103/MUG.
 | `PPT.jcl` | Builds PPT suffix `SQ`, including program and mapset entries |
 | `STARTUP-3.53.4.jcl` | Copies KICKS startup into the SQLite API TASKLIB |
 | `TEST.jcl` | Runs a batch CRLP terminal search through KICKS |
-| `../../clist/SQLK534.clist` | Allocates SQLite/KICKS files and starts the application region |
+| `../../clist/SQLKICKS.clist` | Allocates SQLite/KICKS files and starts the application region |
 
 ## Build and install
 
@@ -110,8 +110,8 @@ zowe zos-jobs submit local-file kicks/sqlite-search/STARTUP-3.53.4.jcl \
 Install the launcher:
 
 ```sh
-zowe zos-files upload file-to-data-set clist/SQLK534.clist \
-  'SYS2.CMDPROC(SQLK534)' --zosmf-profile hercules
+zowe zos-files upload file-to-data-set clist/SQLKICKS.clist \
+  'SYS2.CMDPROC(SQLKICKS)' --zosmf-profile hercules
 ```
 
 The `SQLITEX` copybook must be present before `BUILD.jcl` and `DBUILD.jcl`.
@@ -159,7 +159,7 @@ PF7/PF8 requests.
 From a clean TSO `READY` prompt:
 
 ```text
-SQLK534
+SQLKICKS
 ```
 
 After the KICKS startup screen appears, clear it if necessary and enter:

@@ -8,7 +8,7 @@ tools/probe_sqlite_upgrade.sh 3.53.4 stack
 ```
 
 The standard interactive command is `SQLITE`; `SQL534` is its versioned alias.
-Use `SQLK534` for KICKS. See `docs/upgrade-3.53.4-validation.md` for deployment
+Use `SQLKICKS` for KICKS. See `docs/upgrade-3.53.4-validation.md` for deployment
 datasets and the full test matrix.
 
 These commands are run from the project directory on the workstation. They
