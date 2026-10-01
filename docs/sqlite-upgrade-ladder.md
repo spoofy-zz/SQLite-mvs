@@ -29,6 +29,10 @@ VFS and regression program. Each version receives its own load-module name.
 | 3.31.1 | `SQLT331` | pass | pass | pass | not run |
 | 3.35.5 | `SQLT355` | pass | pass | pass | not run |
 | 3.37.2 | `SQLT372` | pass | pass | pass | pass |
+| 3.40.1 | `SQLT401` | pass | pass | pass | not run |
+| 3.45.3 | `SQLT453` | pass | pass | pass | not run |
+| 3.49.2 | `SQLT492` | pass | pass | pass | not run |
+| 3.53.4 | `SQLT534` | pass | pass | pass | pass |
 
 These are host-side toolchain results, not yet runtime certification of every
 version on MVS. cc370 emits pointer/integer-size warnings in upstream SQLite
@@ -38,6 +42,19 @@ allocator and B-tree code, but all five versions link without patches to
 The 3.37.2 runtime suite passed on MVS 3.8j as `SQLT372T JOB01334` with
 `RC=0000`. Its spool is retained locally at
 `build/upgrades/3.37.2/suite.spool` (an ignored build artifact).
+
+The current upstream release, 3.53.4, also passed on MVS 3.8j as
+`SQLT534T JOB01341` with `RC=0000` after deploying both the batch and TSO
+modules. In addition to the common suite, it ran
+UPSERT, window functions, generated columns, `RETURNING`, strict tables,
+JSON, RIGHT JOIN, JSONB, numeric underscores, two-argument and variadic
+`iif()`, `unistr()`, and `json_array_insert()`.
+
+SQLite 3.53 introduced use of the C99 `INFINITY` macro, which libc370 does
+not provide. `sqlite3_mvs_compat.h` maps it to libc370's `HUGE_VAL` overflow
+sentinel. Upstream `sqlite3.c` remains unmodified. Since MVS/370 hexadecimal
+floating point has no IEEE infinity, extreme decimal overflow behavior is a
+known compatibility difference and needs dedicated numeric testing.
 
 ## Isolated 3.37.2 MVS test
 
@@ -87,3 +104,7 @@ SQL372
 Verify it interactively with `.version`, `.databases`, an UPSERT or window
 query, and `.quit`. The CLIST allocates only `D372DB` and `D372JRN` and calls
 `SQLI372`; the stable `SQLITE` command remains unchanged.
+
+The same isolated setup is available for the current 3.53.4 release as
+`SQLI534`, `IBMUSER.SQLITE.D534.LOAD`, `D534DB`, and `D534JRN`. Install
+`clist/SQL534.clist` as `SYS2.CMDPROC(SQL534)` and start it with `SQL534`.

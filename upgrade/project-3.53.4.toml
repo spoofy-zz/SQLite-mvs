@@ -1,0 +1,22 @@
+[project]
+name = "sqlite-mvs-353-candidate"
+version = "3.53.4"
+type = "application"
+
+[[module]]
+name = "SQLT534"
+entry = "@@CRT0"
+startup = "crt1"
+sources = []
+
+[[module]]
+name = "SQLI534"
+entry = "@@CRT0"
+startup = "crt0"
+sources = []
+
+[deploy]
+target = "IBMUSER.SQLITE.D534.LOAD"
+
+[artifacts]
+loads = true

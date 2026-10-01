@@ -2,6 +2,15 @@
 #ifndef SQLITE3_MVS_COMPAT_H
 #define SQLITE3_MVS_COMPAT_H
 
+#include <math.h>
+
+/* libc370 predates C99 and has no IEEE INFINITY macro. MVS/370 uses IBM
+ * hexadecimal floating point, so its existing overflow sentinel is the
+ * appropriate finite substitute for SQLite's decimal conversion overflow. */
+#ifndef INFINITY
+#define INFINITY HUGE_VAL
+#endif
+
 #ifndef SQLITE_OS_OTHER
 #define SQLITE_OS_OTHER 1
 #endif

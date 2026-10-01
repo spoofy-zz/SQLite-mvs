@@ -232,6 +232,30 @@ static int runModernSuite(sqlite3 *db)
             rc = rc == SQLITE_CONSTRAINT ? SQLITE_OK : SQLITE_ERROR;
         }
     }
+    if (rc == SQLITE_OK && version >= 3038000)
+        rc = expectValue(db, "json",
+            "SELECT json_extract('{\"mvs\":370}','$.mvs');", "370");
+    if (rc == SQLITE_OK && version >= 3039000)
+        rc = expectValue(db, "right-join",
+            "SELECT group_concat(x,'') FROM (SELECT coalesce(a.id,b.id) x "
+            "FROM (SELECT 1 id UNION ALL SELECT 2) a RIGHT JOIN "
+            "(SELECT 2 id UNION ALL SELECT 3) b USING(id) ORDER BY x);",
+            "23");
+    if (rc == SQLITE_OK && version >= 3045000)
+        rc = expectValue(db, "jsonb",
+            "SELECT json_extract(jsonb('{\"mvs\":534}'),'$.mvs');", "534");
+    if (rc == SQLITE_OK && version >= 3046000)
+        rc = expectValue(db, "numeric-underscore", "SELECT 1_234;", "1234");
+    if (rc == SQLITE_OK && version >= 3048000)
+        rc = expectValue(db, "two-arg-iif", "SELECT iif(1,'yes');", "yes");
+    if (rc == SQLITE_OK && version >= 3049000)
+        rc = expectValue(db, "variadic-iif",
+            "SELECT iif(0,'no',0,'no',1,'yes','else');", "yes");
+    if (rc == SQLITE_OK && version >= 3050000)
+        rc = expectValue(db, "unistr", "SELECT length(unistr('\\u0041'));", "1");
+    if (rc == SQLITE_OK && version >= 3053000)
+        rc = expectValue(db, "json-array-insert",
+            "SELECT json_array_insert('[1,3]','$[1]',2);", "[1,2,3]");
     if (rc == SQLITE_OK && version >= 3024000)
         rc = suiteSql(db, "modern-cleanup", "DROP TABLE ts_modern;");
     return rc;

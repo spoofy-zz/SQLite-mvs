@@ -37,7 +37,8 @@ upgrade-probe:
 	tools/probe_sqlite_upgrade.sh $(UPGRADE_VERSION) full
 
 upgrade-matrix:
-	@for version in 3.15.2 3.22.0 3.31.1 3.35.5 3.37.2; do \
+	@for version in 3.15.2 3.22.0 3.31.1 3.35.5 3.37.2 \
+		3.40.1 3.45.3 3.49.2 3.53.4; do \
 		tools/probe_sqlite_upgrade.sh $$version full || exit $$?; \
 	done
 

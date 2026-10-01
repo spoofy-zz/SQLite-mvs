@@ -11,6 +11,10 @@ case "$version" in
   3.31.1) year=2020; number=3310100; module=SQLT331 ;;
   3.35.5) year=2021; number=3350500; module=SQLT355 ;;
   3.37.2) year=2022; number=3370200; module=SQLT372 ;;
+  3.40.1) year=2022; number=3400100; module=SQLT401 ;;
+  3.45.3) year=2024; number=3450300; module=SQLT453 ;;
+  3.49.2) year=2025; number=3490200; module=SQLT492 ;;
+  3.53.4) year=2026; number=3530400; module=SQLT534 ;;
   *) echo "unsupported upgrade-ladder version: $version" >&2; exit 2 ;;
 esac
 
