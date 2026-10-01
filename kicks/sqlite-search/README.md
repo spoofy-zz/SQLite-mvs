@@ -5,6 +5,10 @@ It searches the `people` table in `IBMUSER.SQLITE.TESTDB` by name or city
 prefix, displays ten people per page, and displays a person's orders by ID.
 It uses typed `SQLITEX` binds and result cells.
 
+The application is validated with the current SQLite **3.53.4** stack. Use
+`SQLK534` for that installation; `SQLKICKS` remains the legacy/default
+launcher.
+
 The application follows the same layout as the KICKS `fuel` and `store`
 samples: a BMS map, an OS/VS COBOL command-level program, separate PCT/PPT
 tables, and a TSO launcher.

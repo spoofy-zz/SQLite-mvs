@@ -1,14 +1,16 @@
 # SQLite upgrade ladder on MVS 3.8j
 
-Development of the upgrade path is isolated on the `devel` branch. The
-stable `main` branch and its `SQLTTEST` module remain unchanged.
+The upgrade path has been merged into `main`. SQLite **3.53.4** is the current
+validated project level; the 3.8.11.1 vendored baseline and versioned modules
+remain available for reproducible side-by-side testing.
 
 ## Reproducible compiler probes
 
-Run one complete compiler, assembler, and linker probe with:
+Run the current complete compiler, assembler, linker, TSO and COBOL API build
+with:
 
 ```sh
-tools/probe_sqlite_upgrade.sh 3.37.2 full
+tools/probe_sqlite_upgrade.sh 3.53.4 stack
 ```
 
 Run the complete ladder with:
@@ -36,7 +38,7 @@ VFS and regression program. Each version receives its own load-module name.
 
 These are host-side toolchain results, not yet runtime certification of every
 version on MVS. cc370 emits pointer/integer-size warnings in upstream SQLite
-allocator and B-tree code, but all five versions link without patches to
+allocator and B-tree code, but all nine versions link without patches to
 `sqlite3.c`.
 
 The 3.37.2 runtime suite passed on MVS 3.8j as `SQLT372T JOB01334` with

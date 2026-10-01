@@ -1,5 +1,17 @@
 # Testing SQLite on MVS 3.8j
 
+The current validated SQLite version is **3.53.4**. The plain `make probe`
+instructions below exercise the retained 3.8.11.1 bootstrap baseline. For the
+current full stack use:
+
+```sh
+tools/probe_sqlite_upgrade.sh 3.53.4 stack
+```
+
+The current interactive commands are `SQL534` for TSO and `SQLK534` for
+KICKS. See `docs/upgrade-3.53.4-validation.md` for deployment datasets and the
+full test matrix.
+
 These commands are run from the project directory on the workstation. They
 submit the supplied JCL through the Zowe profile named `hercules`.
 
@@ -36,13 +48,15 @@ At a TSO READY prompt, enter:
 SQLITE
 ```
 
-The expected banner is:
+The legacy `SQLITE` command displays the vendored baseline banner:
 
 ```text
 SQLite 3.8.11.1 for MVS TSO
 Use .help for commands
 sqlite>
 ```
+
+The current `SQL534` command instead displays `SQLite 3.53.4 for MVS TSO`.
 
 Example session:
 

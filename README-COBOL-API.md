@@ -2,7 +2,9 @@
 
 `SQLITEA` lets an OS/VS COBOL program execute SQL against the SQLite RRDS
 database selected by DD names `SQLDB` and `SQLJRN`. The implementation uses
-the real SQLite 3.8.11.1 engine and the same MVS VFS as `SQLITSO`.
+the real SQLite engine and the same MVS VFS as the TSO shell. The current
+validated API build uses SQLite **3.53.4**; the vendored bootstrap build uses
+3.8.11.1.
 
 This is the first API version: one COBOL call executes one SQL buffer and
 returns formatted EBCDIC text. It deliberately establishes and tears down a C

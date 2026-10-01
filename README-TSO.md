@@ -1,5 +1,10 @@
 # SQLite TSO command-line program
 
+The current validated engine is SQLite **3.53.4**, exposed as load module
+`SQLI534` and TSO command `SQL534`. The `SQLITSO`/`SQLITE` names below describe
+the retained 3.8.11.1 bootstrap installation and remain available for
+side-by-side testing.
+
 `SQLITSO` is an interactive SQLite command-line program for a foreground TSO
 session on MVS 3.8j. The `SQLITE` CLIST allocates the database and rollback
 journal RRDS clusters, calls the load module, and releases both DD names when

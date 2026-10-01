@@ -1,8 +1,8 @@
 # SQLite 3.53.4 full-stack validation
 
 SQLite 3.53.4 is deployed as an isolated candidate in
-`IBMUSER.SQLITE.D534.LOAD`. The stable `IBMUSER.SQLITE.LOAD` and `main`
-branch are unchanged.
+`IBMUSER.SQLITE.D534.LOAD`. The stable `IBMUSER.SQLITE.LOAD` deployment is
+unchanged, while the validated 3.53.4 build and tests are now part of `main`.
 
 ## Validated components
 
@@ -42,4 +42,4 @@ Candidate datasets are:
 
 KICKS intentionally uses the existing sample `TESTDB` and `TESTJRN`, so the
 same people/orders data and application behavior can be compared directly
-with the stable stack.
+with the legacy deployment.

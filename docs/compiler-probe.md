@@ -1,6 +1,11 @@
 # C370 compiler probe
 
-## Baseline
+## Historical vendored baseline
+
+The current validated project version is SQLite **3.53.4**. This document
+records the original 3.8.11.1 compiler bring-up, which remains useful as the
+small vendored bootstrap probe. See `docs/sqlite-upgrade-ladder.md` for the
+current build and version matrix.
 
 - SQLite: 3.8.11.1 (2015-07-29)
 - `sqlite3.c` SHA-1: `3be71d99121fe5b17f057011025bcf84e7cc6c84`

@@ -4,6 +4,15 @@ Experimental port of SQLite 3.x to MVS 3.8j/Turnkey5 using the MVSLOVERS MBT
 toolchain and C370. The intended storage backend is a VSAM RRDS with one
 4096-byte SQLite page per relative record number.
 
+**Current SQLite level: 3.53.4.** It is compiled with cc370 and validated on
+MVS 3.8j across the SQL regression suite, TSO shell, COBOL APIs, backup and
+recovery, concurrent batch writers, and the KICKS people/orders application.
+
+| Role | SQLite version | MVS modules |
+|---|---|---|
+| Current validated stack | **3.53.4** | `SQLT534`, `SQLI534`, `SQLITEA`, `SQLITEX` |
+| Vendored bootstrap baseline | 3.8.11.1 | `SQLTTEST`, `SQLITSO` |
+
 The project is intentionally staged:
 
 1. Compile the upstream SQLite amalgamation with C370.
@@ -11,8 +20,10 @@ The project is intentionally staged:
 3. Implement `sqlite3_mvs.c` as a SQLite VFS over VSAM RRDS.
 4. Add ENQ/DEQ locking, MVS time/randomness, recovery tests, and deployment.
 
-The pinned baseline is SQLite 3.8.11.1. Its amalgamation is kept unmodified in
-`vendor/sqlite/`; platform code and compatibility shims belong outside it.
+The repository retains SQLite 3.8.11.1 in `vendor/sqlite/` as a small,
+reproducible bootstrap baseline. The current 3.53.4 amalgamation is fetched by
+the upgrade build and also remains unmodified; platform code and compatibility
+shims belong outside upstream `sqlite3.c`.
 
 ## Compiler probe
 
@@ -24,14 +35,21 @@ make probe-asm
 make probe-link
 ```
 
-`make probe` runs all three gates. The current baseline produces a 1.2 MiB
-object deck and an 857 KiB `SQLTTEST` load module.
+`make probe` runs all three gates for the vendored baseline. It produces a
+1.2 MiB object deck and an 857 KiB `SQLTTEST` load module.
 
 ## Current status
 
-The full SQLite 3.8.11.1 core compiles, assembles and links with the pinned
-cc370/libc370 toolchain. `SQLTTEST` was deployed to `IBMUSER.SQLITE.LOAD` and
-executed on Turnkey5/MVS 3.8j; the first run returned CC 0000 and printed:
+SQLite **3.53.4** is the current validated project version. The complete stack
+passed on Turnkey5/MVS 3.8j, including modern SQL features through
+`json_array_insert()`. Build it with:
+
+```sh
+tools/probe_sqlite_upgrade.sh 3.53.4 stack
+```
+
+The original SQLite 3.8.11.1 bootstrap result is retained for reproducibility.
+Its first MVS run returned CC 0000 and printed:
 
 ```text
 SQLite 3.8.11.1 (3008011)
@@ -78,20 +96,20 @@ large uncommitted transaction with CC 0012 without closing SQLite. The next
 smoke job detects the journal, rolls the database back, reports
 `crash_rows=0`, and completes with CC 0000.
 
-An interactive foreground TSO client is now included as load module
-`SQLITSO`. It accepts multi-line SQL, prints query columns and rows, and
-supports configurable column/list output, headers, widths, NULL text, SQL
-echo, busy timeout, schema/database inspection, and clean PF3 exit. The supplied
-`SQLITE` CLIST allocates both RRDS clusters and invokes the client, so an
-installed copy starts from a TSO READY prompt with:
+An interactive foreground TSO client is included as `SQLI534` for the current
+SQLite 3.53.4 stack (`SQL534` command), with legacy `SQLITSO`/`SQLITE` retained
+for the vendored baseline. It accepts multi-line SQL, prints query columns and
+rows, and supports configurable column/list output, headers, widths, NULL text,
+SQL echo, busy timeout, schema/database inspection, and clean PF3 exit. The
+`SQL534` CLIST allocates the current-version RRDS pair and invokes `SQLI534`:
 
 ```text
-SQLITE
+SQL534
 ```
 
-Build it with `make tso`. The MBT deployment packages both `SQLTTEST` and
-`SQLITSO`; install `clist/SQLITE.clist` as `SYS2.CMDPROC(SQLITE)` to expose
-the short TSO command.
+Build the current stack with `tools/probe_sqlite_upgrade.sh 3.53.4 stack`.
+Install `clist/SQL534.clist` as `SYS2.CMDPROC(SQL534)`. The legacy baseline is
+still built with `make tso` and exposed by `clist/SQLITE.clist`.
 
 `jcl/test-suite.jcl` runs a broader SQL regression suite covering DDL, indexes,
 joins, aggregates, NULL handling, rollback, savepoints, constraints, blobs,
@@ -118,6 +136,8 @@ See `README-COBOL-STRUCTURED.md` for the typed, parameterized `SQLITEX`
 request/row API used by the KICKS people/orders screen.
 See `kicks/sqlite-search/README.md` for the BMS/COBOL KICKS example that
 searches the sample `people` table by name or city using transaction `SQLS`.
+See `docs/upgrade-3.53.4-validation.md` for the complete current-version MVS
+validation matrix and job results.
 
 ## MBT
 
