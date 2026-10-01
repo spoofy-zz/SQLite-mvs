@@ -34,6 +34,10 @@ SQLITE TESTDB CREATED
 This operation destroys and recreates testdb. It does not modify the regular
 `IBMUSER.SQLITE.D534DB` database used by the `SQLITE` command.
 
+To install the same PEOPLE/ORDERS sample in the regular database opened by
+`SQLITE`, submit `jcl/seed-default.jcl`. That job recreates only `people` and
+`orders`; unrelated tables in `D534DB` are preserved.
+
 ## Open from TSO
 
 Install the command CLIST once:
