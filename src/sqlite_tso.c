@@ -13,6 +13,7 @@
 #define TERM_ENTER 0x7d
 #define TERM_CLEAR 0x6d
 #define TERM_PF3   0xf3
+#define TERM_PF12  0x7c
 #define MODE_COLUMN 0
 #define MODE_LIST   1
 #define MODE_LINE   2
@@ -554,6 +555,7 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut(".version            Show active SQLite runtime version");
         tsoOut(".quit / .exit       Return to TSO READY");
         tsoOut("SQL statements must end with ;  PF3 exits");
+        tsoOut("PF12 repeats the last completed command");
     } else if (equalIgnoreCase(line, ".tables")) {
         executeSql(db, shell,
           "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;");
@@ -869,12 +871,15 @@ int main(void)
     sqlite3 *db = 0;
     char line[TSO_LINE];
     char statement[TSO_LINE];
+    char lastCommand[TSO_LINE];
+    char *text;
     unsigned char raw[TSO_LINE];
     int length;
     int rc;
     ShellState shell;
     resetShell(&shell);
     statement[0] = '\0';
+    lastCommand[0] = '\0';
     rc = sqlite3_initialize();
     if (rc == SQLITE_OK)
         rc = sqlite3_open_v2("SQLDB", &db,
@@ -896,7 +901,15 @@ int main(void)
         length = tsqtget((char *)raw, sizeof(raw));
         if (length < 0) break;
         if (length > 0 && raw[0] == TERM_PF3) break;
-        if (length > 0 && raw[0] == TERM_CLEAR) {
+        if (length > 0 && raw[0] == TERM_PF12) {
+            statement[0] = '\0';
+            if (!lastCommand[0]) {
+                tsoOut("PF12: no previous command");
+                continue;
+            }
+            strcpy(line, lastCommand);
+            terminalOut("PF12: %s", line);
+        } else if (length > 0 && raw[0] == TERM_CLEAR) {
             statement[0] = '\0';
             if (tsqtclr() != 0)
                 tsoOut("ERROR: cannot clear terminal screen");
@@ -914,18 +927,21 @@ int main(void)
             memcpy(line, raw, length);
             line[length] = '\0';
         }
-        if (statement[0] == '\0' && trim(line)[0] == '.') {
-            if (dotCommand(db, &shell, trim(line))) break;
+        text = trim(line);
+        if (statement[0] == '\0' && text[0] == '.') {
+            strcpy(lastCommand, text);
+            if (dotCommand(db, &shell, text)) break;
             continue;
         }
-        if ((int)strlen(statement) + (int)strlen(trim(line)) + 2 >= TSO_LINE) {
+        if ((int)strlen(statement) + (int)strlen(text) + 2 >= TSO_LINE) {
             tsoOut("ERROR: statement too long");
             statement[0] = '\0';
             continue;
         }
         if (statement[0]) strcat(statement, " ");
-        strcat(statement, trim(line));
+        strcat(statement, text);
         if (sqlite3_complete(statement)) {
+            strcpy(lastCommand, statement);
             executeSql(db, &shell, statement);
             statement[0] = '\0';
         }

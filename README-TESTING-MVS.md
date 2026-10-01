@@ -92,8 +92,9 @@ include `.help`, `.tables`, `.indexes [table]`, `.schema [table]`,
 Column mode is the default and underlines
 its headers; list mode uses a configurable separator; line mode is convenient
 for wide rows. PF3 is an immediate exit key; Clear discards a partially
-entered SQL statement and clears the display. `.clear` performs the same
-screen reset from the command line.
+entered SQL statement and clears the display. PF12 immediately repeats the
+last completed SQL statement or dot-command. `.clear` performs the same screen
+reset from the command line.
 
 To invoke the load module without installing the CLIST, use these commands
 from TSO READY:
