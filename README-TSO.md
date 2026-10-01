@@ -79,8 +79,20 @@ Command             Description
 .backup             Online copy to SQLBAK/SQLBJR
 .restore            Replace main from SQLBAK/SQLBJR
 .clear              Clear screen and move cursor home
-.version            Show SQLite version
+.version            Show active SQLite runtime version and source ID
 .quit / .exit       Return to TSO READY
+```
+
+For the current `SQL534` client, `.version` reports the active engine rather
+than a documentation constant. Its output begins with:
+
+```text
+SQLite runtime
+------------------
+Version:   3.53.4
+Number:    3053004
+Source ID: 2026-07-24 ...
+Platform:  MVS 3.8j / mvs-rrds
 ```
 
 `column` is the default output mode. Earlier result columns use their

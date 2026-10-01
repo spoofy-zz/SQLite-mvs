@@ -551,7 +551,7 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut(".backup             Copy main database to SQLBAK/SQLBJR");
         tsoOut(".restore            Replace main database from SQLBAK");
         tsoOut(".clear              Clear screen and move cursor home");
-        tsoOut(".version            Show SQLite version");
+        tsoOut(".version            Show active SQLite runtime version");
         tsoOut(".quit / .exit       Return to TSO READY");
         tsoOut("SQL statements must end with ;  PF3 exits");
     } else if (equalIgnoreCase(line, ".tables")) {
@@ -641,9 +641,12 @@ static int dotCommand(sqlite3 *db, ShellState *shell, char *line)
         tsoOut("-----------------");
         tsoOut("%lld", sqlite3_last_insert_rowid(db));
     } else if (equalIgnoreCase(line, ".version")) {
-        tsoOut("SQLite version");
+        tsoOut("SQLite runtime");
         tsoOut("------------------");
-        tsoOut("%s (%d)", sqlite3_libversion(), sqlite3_libversion_number());
+        tsoOut("Version:   %s", sqlite3_libversion());
+        tsoOut("Number:    %d", sqlite3_libversion_number());
+        tsoOut("Source ID: %s", sqlite3_sourceid());
+        tsoOut("Platform:  MVS 3.8j / mvs-rrds");
     } else if (startsIgnoreCase(line, ".headers")) {
         char *value = trim(line + 8);
         if (equalIgnoreCase(value, "on")) {
