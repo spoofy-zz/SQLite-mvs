@@ -139,6 +139,21 @@ that is still unwinding from being mistaken for the command-line database.
 `SQLITADM` also allocates the backup RRDS pair and uses the distinct
 `sqlitadm>` prompt.
 
+Optionally install the supplied Turnkey5/Larry ISPF-like applications panel so
+the client is available as option `M.S`:
+
+```sh
+zowe zos-files download data-set 'SYS2.ISP.PLIB(TSOAPPLS)' \
+  --file TSOAPPLS.backup --zosmf-profile hercules
+zowe zos-files upload file-to-data-set isp/TSOAPPLS \
+  'SYS2.ISP.PLIB(TSOAPPLS)' --zosmf-profile hercules
+```
+
+This panel invokes the installed `SYS2.CMDPROC(SQLITE)` command. Preserve
+site-specific changes by merging the SQLite entry when `TSOAPPLS` has already
+been customized. See [README-TSO.md](README-TSO.md#larryturnkey5-isp-like-menu)
+for the exact panel lines, navigation, and rollback backup.
+
 ### 5. Build and install the KICKS application
 
 `SETUP.jcl` recreates `IBMUSER.SQLITE.SOURCE` and `KLOAD`, so do not rerun it

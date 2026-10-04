@@ -1,0 +1,48 @@
+)ATTR
+ + TYPE(TEXT)   INTENS(LOW)  SKIP(ON)    COLOR(GREEN)
+ @ TYPE(TEXT)   INTENS(LOW)  SKIP(ON)    COLOR(TURQ)
+ % TYPE(TEXT)   INTENS(HIGH) SKIP(ON)    COLOR(WHITE)
+ ? TYPE(TEXT)   INTENS(HIGH) SKIP(ON)    COLOR(YELLOW)
+ _ TYPE(INPUT)  INTENS(LOW)  JUST(LEFT)  COLOR(TURQ)
+ # TYPE(INPUT)  INTENS(LOW)  JUST(ASIS)
+ ~ TYPE(INPUT)  INTENS(HIGH) JUST(LEFT)
+ ! TYPE(INPUT)  INTENS(HIGH) JUST(RIGHT)
+ { TYPE(OUTPUT) INTENS(LOW)  JUST(LEFT)
+ } TYPE(OUTPUT) INTENS(LOW)  JUST(RIGHT)
+)BODY WIDTH(&ZSCREENW) EXPAND(//)
+%                            Additional applications      / /
+%Option ===>_ZCMD                                                              +
++                                                                              +
+%   1 @RFE         + ISPF/PDF like productivity system (Greg Price)
+%   2 @RPF         + ISPF/PDF like productivity system (Rob Prins)
+%   3 @IM          + IMON/370 system monitor
+%   4 @HELP        + General TSO Help
+%   5 @QUEUE       + SPOOL browser
+%   6 @UTILS       + Information on utilities and commands available
+%   7 @TERMTEST    + Verify 3270 terminal capabilities
+%   S @SQLITE      + SQLite 3.53.4 interactive TSO client
+%   R @RECEIVE     + Receive XMIT file
+%  XM @XMIT        + Transmit XMIT file
+%  PC @RCQCAL      + Perpetual calendar
+%
++Enter%END+command to return.
+%
+)INIT
+  .HELP = TK4M0000
+)PROC
+  &ZSEL = TRANS( TRUNC (&ZCMD,'.')
+                1,'CMD(RFE)'
+                2,'CMD(RPF)'
+                3,'CMD(IM)'
+                4,'CMD(HEL)'
+                5,'CMD(TSOEXEC Q)'
+                6,'CMD(HEL UTILS)'
+                7,'CMD(TERMTEST)'
+                S,'CMD(SQLITE)'
+                R,'PANEL(PRECV372) NEWAPPL(PXMI)'
+               XM,'PANEL(PXMIT372) NEWAPPL(PXMI)'
+               PC,'CMD(RCQDATEC)'
+              ' ',' '
+                *,'?' )
+  &ZTRAIL = .TRAIL
+)END

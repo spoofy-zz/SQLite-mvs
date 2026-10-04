@@ -42,6 +42,40 @@ Start it at a TSO READY prompt:
 SQLITE
 ```
 
+### Larry/Turnkey5 ISPF-like menu
+
+The supplied [`isp/TSOAPPLS`](isp/TSOAPPLS) panel adds SQLite to the
+Turnkey5 "Additional applications" menu below primary option `M`. It expects
+`SYS2.CMDPROC(SQLITE)` to be installed and reachable through the TSO command
+search path.
+
+Back up the site's existing panel before replacing it:
+
+```sh
+zowe zos-files download data-set 'SYS2.ISP.PLIB(TSOAPPLS)' \
+  --file TSOAPPLS.backup --zosmf-profile hercules
+zowe zos-files upload file-to-data-set isp/TSOAPPLS \
+  'SYS2.ISP.PLIB(TSOAPPLS)' --zosmf-profile hercules
+```
+
+The standard Turnkey5 primary panel already maps option `M` to `TSOAPPLS`:
+
+```text
+M,'PANEL(TSOAPPLS) NEWAPPL(ISR)'
+```
+
+If the target has a locally customized `TSOAPPLS`, merge these two lines into
+its display and `TRANS` sections instead of replacing the whole member:
+
+```text
+%   S @SQLITE      + SQLite 3.53.4 interactive TSO client
+                S,'CMD(SQLITE)'
+```
+
+From the primary menu, enter `M` and then `S`, or enter `M.S` directly. Exit
+SQLite with `.quit`, `.exit`, or PF3 to return to the menu. If `M` was already
+open during installation, leave and reopen that panel before testing.
+
 SQL statements may span multiple terminal inputs and execute when a complete
 statement ending in `;` has been entered. `.quit`, `.exit`, or PF3 returns to
 TSO READY. Clear discards the current incomplete statement. PF12 retrieves the
