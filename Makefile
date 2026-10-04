@@ -26,7 +26,7 @@ CC370_SOURCE ?= toolchain/cc370
 SQLITE_MVS_CPPFLAGS := -include include/sqlite3_mvs_compat.h \
 	-include $(NAMES_HEADER)
 
-.PHONY: probe probe-c probe-asm probe-link tso cobol-api cobol-api-x cobol-bridge stack names sdk as370-large clean mbt-build upgrade-probe-c upgrade-probe upgrade-matrix kicks-sql-precompile test-precompiler
+.PHONY: probe probe-c probe-asm probe-link tso import cobol-api cobol-api-x cobol-bridge stack names sdk as370-large clean mbt-build upgrade-probe-c upgrade-probe upgrade-matrix kicks-sql-precompile test-precompiler
 
 UPGRADE_VERSION ?= 3.15.2
 
@@ -57,7 +57,7 @@ upgrade-matrix:
 		tools/probe_sqlite_upgrade.sh $$version full || exit $$?; \
 	done
 
-stack: probe tso cobol-api cobol-api-x
+stack: probe tso import cobol-api cobol-api-x
 
 sdk:
 	$(MAKE) -C toolchain/cc370 PREFIX=$(SDK_ROOT) install
@@ -132,6 +132,16 @@ tso: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
 		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt0.o \
 		$^ -lc -iebcopy -o $(BUILDDIR)/$(TSO_MODULE)
 
+$(BUILDDIR)/sqlite_import.o: src/sqlite_import.c $(NAMES_HEADER)
+	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
+
+import: $(BUILDDIR)/sqlite3.o $(BUILDDIR)/sqlite3_mvs.o \
+		$(BUILDDIR)/sqlite_import.o
+	$(LD370) -L$(shell dirname $$(command -v $(CC370)))/../cc370/lib \
+		--name SQLIMPRT -e @@CRT0 \
+		$(shell dirname $$(command -v $(CC370)))/../cc370/lib/crt1.o \
+		$^ -lc -iebcopy -o $(BUILDDIR)/SQLIMPRT
+
 $(BUILDDIR)/sqlite_cobol_start.o: src/sqlite_cobol_start.c include/sqlite_cobol.h $(NAMES_HEADER)
 	$(CC370) -std=gnu89 -O1 -Iinclude -I$(SQLITE_INCLUDE_DIR) $(SQLITE_MVS_CPPFLAGS) -c $< -o $@
 
@@ -174,6 +184,7 @@ clean:
 		$(BUILDDIR)/sqlite3_mvs.o $(BUILDDIR)/core_link.o $(BUILDDIR)/SQLTTEST \
 		$(BUILDDIR)/sqlite_tso.o $(BUILDDIR)/tsqtget.o $(BUILDDIR)/tsqtput.o \
 		$(BUILDDIR)/SQLITSO \
+		$(BUILDDIR)/sqlite_import.o $(BUILDDIR)/SQLIMPRT \
 		$(BUILDDIR)/sqlite_cobol_start.o $(BUILDDIR)/sqlite_cobol_api.o \
 		$(BUILDDIR)/sqlite_cobol_x_start.o $(BUILDDIR)/sqlite_cobol_x_api.o \
 		$(BUILDDIR)/SQLITEX \

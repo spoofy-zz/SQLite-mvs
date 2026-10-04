@@ -10,7 +10,7 @@ recovery, concurrent batch writers, and the KICKS people/orders application.
 
 | Role | SQLite version | MVS modules |
 |---|---|---|
-| Current validated stack | **3.53.4** | `SQLT534`, `SQLI534`, `SQLITEA`, `SQLITEX` |
+| Current validated stack | **3.53.4** | `SQLT534`, `SQLI534`, `SQLITEA`, `SQLITEX`, `SQLIMPRT` |
 | Source-only bootstrap baseline | 3.8.11.1 | `SQLTTEST`, `SQLITSO` |
 
 The project is intentionally staged:
@@ -60,8 +60,9 @@ make cobol-bridge
 make kicks-sql-precompile test-precompiler
 ```
 
-The upgrade build produces `SQLT534`, `SQLI534`, `SQLITEA`, and `SQLITEX` in
-`build/upgrades/3.53.4/probe`. The bridge is `build/sqliteabr.o`.
+The upgrade build produces `SQLT534`, `SQLI534`, `SQLITEA`, `SQLITEX`, and
+`SQLIMPRT` in `build/upgrades/3.53.4/probe`. The bridge is
+`build/sqliteabr.o`.
 
 ### 2. Create VSAM storage and deploy SQLite
 
@@ -111,6 +112,10 @@ zowe zos-jobs submit local-file jcl/seed-default.jcl \
 `create-testdb.jcl` recreates `IBMUSER.SQLITE.TESTDB` and `TESTJRN`.
 `seed-default.jcl` recreates only the two sample tables in `D534DB` and keeps
 unrelated tables.
+
+To add the complete Chinook sample to `D534DB` without replacing
+`people`/`orders`, follow [README-CHINOOK.md](README-CHINOOK.md). The importer
+drops and recreates only the 11 Chinook tables in one transaction.
 
 ### 4. Install the TSO commands
 
