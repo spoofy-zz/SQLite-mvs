@@ -30,8 +30,8 @@ zowe zos-files upload file-to-data-set clist/SQLITE.clist \
 The default installation uses:
 
 - load module `IBMUSER.SQLITE.D534.LOAD(SQLI534)`
-- database `IBMUSER.SQLITE.D534DB`, allocated as `SQLDB`
-- journal `IBMUSER.SQLITE.D534JRN`, allocated as `SQLJRN`
+- database `IBMUSER.SQLITE.D534DB`, allocated as `SQLMAIN`
+- journal `IBMUSER.SQLITE.D534JRN`, allocated as `SQLMJRN`
 - VACUUM temporary database `IBMUSER.SQLITE.D534TMP`, allocated as `SQLTMP`
 - VACUUM temporary journal `IBMUSER.SQLITE.D534TJR`, allocated as `SQLTJR`
 - command member `SYS2.CMDPROC(SQLITE)`
@@ -300,13 +300,17 @@ trying to redefine the clusters.
 Without the CLIST:
 
 ```text
-ALLOC FI(SQLDB) DA('IBMUSER.SQLITE.D534DB') SHR
-ALLOC FI(SQLJRN) DA('IBMUSER.SQLITE.D534JRN') SHR
-CALL 'IBMUSER.SQLITE.D534.LOAD(SQLI534)'
-FREE FI(SQLDB SQLJRN)
+ALLOC FI(SQLMAIN) DA('IBMUSER.SQLITE.D534DB') SHR
+ALLOC FI(SQLMJRN) DA('IBMUSER.SQLITE.D534JRN') SHR
+CALL 'IBMUSER.SQLITE.D534.LOAD(SQLI534)' 'SQLMAIN:SQLMJRN'
+FREE FI(SQLMAIN SQLMJRN)
 ```
 
 `Cannot open SQLite database` usually means a DD allocation failed, the RRDS
 has not been defined, or another disconnected TSO address space still owns an
 open VSAM control block. Confirm both datasets exist and close the stale TSO
-session before retrying.
+session before retrying. If this follows the KICKS demo, PF3 has only returned
+from `SQLS` to KICKS. Enter `K999`, press Enter at the `***` pause, and wait
+for `READY`. The standard `SQLITE` launcher uses `SQLMAIN`/`SQLMJRN`, so it
+cannot accidentally reuse KICKS's `SQLDB`/`SQLJRN` allocation while that
+return is completing.

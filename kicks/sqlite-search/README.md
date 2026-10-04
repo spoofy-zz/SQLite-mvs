@@ -27,7 +27,7 @@ Start transaction `SQLS`. Enter either a name or a city:
  ----------------------------------------
  1 | ANA HORVAT | ZAGREB | 21
 
- ENTER=SEARCH  PF4=CLEAR  PF3=EXIT
+ ENTER=SEARCH  PF4=CLEAR  PF3=KICKS
 ```
 
 - `ENTER` searches people. If both fields are filled, name takes precedence.
@@ -35,7 +35,8 @@ Start transaction `SQLS`. Enter either a name or a city:
 - `PF5` lists orders for the ID field.
 - `PF6` opens the detail/edit screen for the ID field.
 - `PF4` clears both fields and the result area.
-- `PF3` leaves the transaction and returns to KICKS.
+- `PF3` leaves the SQLS transaction and returns to KICKS. It does not stop
+  the KICKS region.
 
 The search matches from the beginning after trimming the ten-character input
 field. For example, `ANA` finds `ANA HORVAT`, while `ZAG` finds people in
@@ -380,6 +381,12 @@ After the KICKS startup screen appears, clear it if necessary and enter:
 SQLS
 ```
 
+To leave the demo completely, press PF3 to return to KICKS, enter `K999`, and
+press Enter at the TSO `***` pause. Wait until the launcher prints
+`SQLITE 3.53 KICKS SESSION ENDED` and TSO displays `READY`. Only then issue
+`SQLITE` or another TSO command. The `SQLKICKS` launcher also prints this
+reminder before starting the region.
+
 The launcher binds `SQLDB` to `IBMUSER.SQLITE.TESTDB` and `SQLJRN` to
 `IBMUSER.SQLITE.TESTJRN`. To use another database, copy the CLIST and change
 both allocations together.
@@ -387,6 +394,9 @@ both allocations together.
 Only one KICKS session using these exact DD-backed datasets should be started
 under a TSO user at a time. SQLite's MVS VFS still coordinates database access
 with batch and TSO clients through ENQ/DEQ and the configured busy timeout.
+The normal `SQLITE` command uses a separate `SQLMAIN`/`SQLMJRN` DD pair for
+`D534DB`, so a KICKS `SQLDB` allocation cannot be reused accidentally while
+the region is returning control to TSO.
 
 ## Current scope
 

@@ -127,7 +127,10 @@ zowe zos-files upload file-to-data-set clist/SQLKICKS.clist \
   'SYS2.CMDPROC(SQLKICKS)' --zosmf-profile hercules
 ```
 
-`SQLITE` and `SQL534` open `D534DB`; `TESTDB` opens the separate KICKS sample.
+`SQLITE`, `SQL534`, and `SQLITADM` open `D534DB` through their private
+`SQLMAIN`/`SQLMJRN` DD names. `TESTDB` opens the separate KICKS sample through
+`SQLDB`/`SQLJRN`. Keeping the DD pairs distinct prevents a KICKS allocation
+that is still unwinding from being mistaken for the command-line database.
 `SQLITADM` also allocates the backup RRDS pair and uses the distinct
 `sqlitadm>` prompt.
 
@@ -207,6 +210,9 @@ SELECT count(*) FROM people;
 
 Start the KICKS application with `SQLKICKS`, then enter transaction `SQLS`.
 Search by name or city, use PF6 for detail, and PF3 to leave the transaction.
+PF3 returns to KICKS; it does not stop the KICKS region. Enter `K999`, then
+press Enter at the `***` pause and wait for `READY` before issuing TSO
+commands. The launcher frees the KICKS DD allocations during that return.
 See `README-TSO.md` and `kicks/sqlite-search/README.md` for the complete command
 and screen references.
 

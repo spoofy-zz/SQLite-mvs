@@ -930,18 +930,27 @@ int main(int argc, char **argv)
     unsigned char raw[TSO_LINE];
     int length;
     int rc;
+    int i;
     int adminMode;
     int recallActive = 0;
     const char *primaryPrompt;
+    const char *databaseName;
     ShellState shell;
-    adminMode = argc > 1 && equalIgnoreCase(argv[1], "ADMIN");
+    adminMode = 0;
+    databaseName = "SQLDB";
+    for (i = 1; i < argc; i++) {
+        if (equalIgnoreCase(argv[i], "ADMIN"))
+            adminMode = 1;
+        else
+            databaseName = argv[i];
+    }
     primaryPrompt = adminMode ? "sqlitadm> " : "sqlite> ";
     resetShell(&shell);
     statement[0] = '\0';
     lastCommand[0] = '\0';
     rc = sqlite3_initialize();
     if (rc == SQLITE_OK)
-        rc = sqlite3_open_v2("SQLDB", &db,
+        rc = sqlite3_open_v2(databaseName, &db,
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "mvs-rrds");
     if (rc != SQLITE_OK) {
         tsoOut("Cannot open SQLite database: %s",

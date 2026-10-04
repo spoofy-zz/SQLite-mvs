@@ -491,6 +491,7 @@ int main(int argc, char **argv)
 {
     sqlite3 *db = 0;
     sqlite3_vfs *vfs;
+    const char *databaseName = argc > 2 ? argv[2] : "SQLDB";
     int rc;
     printf("SQLite %s (%d)\n", sqlite3_libversion(),
            sqlite3_libversion_number());
@@ -500,7 +501,7 @@ int main(int argc, char **argv)
            vfs ? vfs->xOpen : 0, vfs ? vfs->szOsFile : -1,
            vfs ? vfs->zName : "(null)");
     if (rc == SQLITE_OK)
-        rc = sqlite3_open_v2("SQLDB", &db,
+        rc = sqlite3_open_v2(databaseName, &db,
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, "mvs-rrds");
     printf("open rc=%d db=%p\n", rc, db);
     if (rc == SQLITE_OK && argc > 1 && strcmp(argv[1], "HOLD") == 0)
